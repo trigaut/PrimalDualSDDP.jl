@@ -34,5 +34,10 @@ const nim = OlenEff.NonIslandedModel(Δt, capacity,
 									 ρc, ρd, pbmax, 
 									 pbmin, pemax, Δhmax, 
 						 			 cbuy, csell, 
-						 			 train_data[:,:,1] .- train_data[:,:,2], 10)
+						 			 5 .* train_data[:,days,1] .- 10 .* train_data[:,days,2], 10)
+
+const V = [OlenEff.PolyhedralFunction([0. 0. 0.], [-100.]) for t in 1:T]
+push!(V, OlenEff.PolyhedralFunction([-offpeak 0. 0.], [0.]))
 	
+x₀s = collect(Base.product([0.], [ 20.], [0.]))
+const m = OlenEff.sddp!(nim, V, 20, x₀s)

@@ -1,4 +1,4 @@
-struct PolyhedralFunction
+mutable struct PolyhedralFunction
 	λ::Array{Float64,2}
 	γ::Array{Float64,1}
 end
@@ -27,6 +27,7 @@ struct NonIslandedModel
 	ϵ
 	πϵ
 	ϵs
+	fₜ
 end
 
 function NonIslandedModel(Δt::Float64, capacity::Float64, 
@@ -46,14 +47,22 @@ function NonIslandedModel(Δt::Float64, capacity::Float64,
 
 	ϵ, πϵ = discrete_white_noise(ϵs, bins);
 
+	function fₜ(t, xₜ, uₜ, ξₜ₊₁)
+		xₜ₊₁ = [xₜ[1] + ρc*uₜ[1] - 1/ρd*uₜ[2],
+				xₜ[2] - uₜ[1] - uₜ[2],
+				α[t]*xₜ[3] + β[t] + ξₜ₊₁[1] ]
+		return xₜ₊₁
+	end
+
 	NonIslandedModel(Δt, capacity, ρc, ρd, 
 					 pbmax, pbmin, pemax, 
 					 Δhmax, cbuy, csell, 
-					 α, β, ϵ, πϵ, ϵs)
+					 α, β, ϵ, πϵ, ϵs, fₜ)
 end
 
 function bellman_operator(nim::NonIslandedModel, t::Int, Vₜ₊₁::PolyhedralFunction)
-	m = JuMP.direct_model(optimizer_with_attributes(Clp.Optimizer, "LogLevel" => 0))
+
+	m = JuMP.Model(optimizer_with_attributes(Clp.Optimizer, "LogLevel" => 0))
 	
 	@variable(m, 0. <= uₜ⁺ <= nim.pbmax)
 	@variable(m, 0. <= uₜ⁻ <= -nim.pbmin)
@@ -69,15 +78,15 @@ function bellman_operator(nim::NonIslandedModel, t::Int, Vₜ₊₁::PolyhedralF
 	@variable(m, net_dₜ)
 	ϵ = nim.ϵ[t]
 	nξ = length(ϵ)
-	@expression(m, net_dₜ₊₁, ϵ .+ nim.α[t] * net_dₜ + nim.β[t])
+	@expression(m, net_dₜ₊₁[ξ=1:nξ], ϵ[ξ] + nim.α[t] * net_dₜ + nim.β[t])
 
-	importₜ₊₁ = net_dₜ₊₁ + uₜ+ .- uₜ⁻
+	@expression(m, importₜ₊₁[ξ=1:nξ], net_dₜ₊₁[ξ] + uₜ⁺ - uₜ⁻)
 	@variable(m, ebuy[1:nξ] >= 0.)
 	@constraint(m, ebuy .>= importₜ₊₁)
 	if nim.pemax < Inf
-		@constraint(m, ebuy  .<= pemax)
+		@constraint(m, ebuy  .<= nim.pemax)
 	end
-	esell = importₜ₊₁ .- ebuy
+	@expression(m, esell[ξ=1:nξ], importₜ₊₁[ξ] - ebuy[ξ])
 
 	@variable(m, θ[1:nξ])
 	for (λ, γ) in eachcut(Vₜ₊₁)
@@ -85,95 +94,85 @@ function bellman_operator(nim::NonIslandedModel, t::Int, Vₜ₊₁::PolyhedralF
 			@constraint(m, θ[ξ] >= λ'*[socₜ₊₁, hₜ₊₁, net_dₜ₊₁[ξ]] + γ)
 		end
 	end
-	@objective(m, Min, sum(πϵ[t, ξ]* (nim.cbuy[t]*ebuy[ξ] + nim.csell[t]*esell[ξ] + θ[ξ]) for i in 1:nξ))
+	@objective(m, Min, sum(nim.πϵ[t][ξ]*(nim.cbuy[t]*ebuy[ξ] + nim.csell[t]*esell[ξ] + θ[ξ]) for ξ in 1:nξ))
+
+	@expression(m, xₜ, [socₜ, hₜ, net_dₜ])
+	@expression(m, xₜ₊₁[ξ=1:nξ], [socₜ₊₁, hₜ₊₁, net_dₜ₊₁[ξ]])
+	@expression(m, uₜ, [uₜ⁺, uₜ⁻])
 
 	return m
 end
 
-function solve!(m::JuMP.Model, socₜ::Float64, hₜ::Float64, net_dₜ::Float64)
-	fix(m[:socₜ], socₜ)
-	fix(m[:hₜ], hₜ)
-	fix(m[:net_dₜ], net_dₜ)
-
+function solve!(m::JuMP.Model, xₜ::Vector{Float64})
+	fix.(m[:xₜ], xₜ)
 	optimize!(m)
-	
 	@assert termination_status(m) == MOI.OPTIMAL
-
 	return
 end
 
-function new_cut!(Vₜ::PolyhedralFunction, m::JuMP.Model, socₜ::Float64, hₜ::Float64, net_dₜ::Float64)
-	solve!(m, socₜ, hₜ, net_dₜ)
-
-	λ = [dual(m[:socₜ]), dual(m[:hₜ]), dual(m[:net_dₜ])]
-	γ = objective_value(m) - λ'*[socₜ, hₜ, net_dₜ]
-
-	cat!(V.λ, λ, dims = 1)
-	push!(V.γ, γ)
-
+function new_cut!(Vₜ::PolyhedralFunction, m::JuMP.Model, xₜ::Vector{Float64})
+	solve!(m, xₜ)
+	λ = dual.(FixRef.(m[:xₜ]))
+	γ = objective_value(m) - λ'*xₜ
+	Vₜ.λ = cat(Vₜ.λ, λ', dims = 1)
+	push!(Vₜ.γ, γ)
 	return
 end
 
 function update!(mₜ::JuMP.Model, Vₜ₊₁::PolyhedralFunction)
 	nξ = length(mₜ[:θ])
 	for ξ in 1:nξ
-		@constraint(mₜ, mₜ[:θ][ξ] >= Vₜ₊₁.λ[end,:]'*[mₜ[:socₜ], mₜ[:hₜ], mₜ[:net_dₜ]] + Vₜ₊₁.γ[end])
+		@constraint(mₜ, mₜ[:θ][ξ] >= Vₜ₊₁.λ[end,:]'*mₜ[:xₜ₊₁][ξ] + Vₜ₊₁.γ[end])
 	end
 	return
 end
 
-function control!(m::JuMP.Model, socₜ::Float64, hₜ::Float64, net_dₜ::Float64)
-	solve!(m, socₜ, hₜ, net_dₜ)
-
-	♯uₜ⁺ = value(m[:uₜ⁺])
-	♯uₜ⁻ = value(m[:uₜ⁻])
-
-	return ♯uₜ⁺, ♯uₜ⁻
+function control!(m::JuMP.Model, xₜ::Vector{Float64})
+	solve!(m, xₜ)
+	return value.(m[:uₜ])
 end
 
-function fₜ!(m::JuMP.Model, socₜ::Float64, hₜ::Float64, net_dₜ::Float64)
-	solve!(m, socₜ, hₜ, net_dₜ)
-
-	♯socₜ₊₁ = value(m[:socₜ₊₁])
-	♯hₜ₊₁ = value(m[:hₜ₊₁])
-	♯net_dₜ₊₁ = value(m[:net_dₜ₊₁])
-
-	return ♯socₜ₊₁, ♯hₜ₊₁, ♯net_dₜ₊₁
-end
-
-function forward_pass(m::Vector{JuMP.Model}, ϵscenario::Vector{Float64},
-					  soc₀::Float64, h₀::Float64, net_d₀::Float64)
-	T = length(ϵscenario)
-	soc_scenario = fill(soc₀, T+1)
-	h_scenario = fill(h₀, T+1)
-	net_d_scenario = fill(net_d₀, T+1)
-	for (t, ϵₜ₊₁) in enumerate(ϵscenario)
-		socₜ₊₁, hₜ₊₁, net_dₜ₊₁ = fₜ!(m[t], socₜ, hₜ, net_dₜ)
+function forward_pass(m::Vector{JuMP.Model}, 
+					  ξscenario::Vector{Float64},
+					  x₀::Vector{Float64},
+					  fₜ::Function)
+	T = length(ξscenario)
+	xscenario = fill(0., T+1, length(x₀))
+	xscenario[1,:] .= x₀
+	xₜ = x₀	
+	for (t, ξₜ₊₁) in enumerate(ξscenario)
+		uₜ = control!(m[t], xₜ)
+		xₜ = fₜ(t, xₜ, uₜ, [ξₜ₊₁])
+		xscenario[t+1,:] .= xₜ
 	end
-	return soc_scenario, h_scenario, net_d_scenario
+	return xscenario
 end
 
 function backward_pass!(m::Vector{JuMP.Model},
 					  	V::Vector{PolyhedralFunction},
-					  	soc_scenario::Vector{Float64}, 
-					  	h₀::Vector{Float64}, 
-					  	net_d₀::Vector{Float64})
+					  	xscenario::Array{Float64,2})
 	T = length(m)
 	for t in T:-1:1
-		socₜ = soc_scenario[t]
-		hₜ = soc_scenario[t]
-		net_dₜ = soc_scenario[t]
-		new_cut!(V[t], m[t], socₜ, hₜ, net_dₜ)
+		if t < T
+			update!(m[t], V[t+1])
+		end
+		xₜ = xscenario[t,:]
+		new_cut!(V[t], m[t], xₜ)
 	end
-	return soc_scenario, h_scenario, net_d_scenario
+	return 
 end
 
-function sddp!(nim::NonIslandedModel, n_pass::Int)
-	S = size(nim.ϵs,2)
-	for i in 1:n_pass
-		ϵ_scenario = nim.ϵs[:,rand(1:S)] 
-		soc_scenario, h_scenario, net_d_scenario = forward_pass(m, ϵ_scenario)
-		backward_pass!(m, V, soc_scenario, h_scenario, net_d_scenario)
+function sddp!(nim::NonIslandedModel, V::Array{PolyhedralFunction}, 
+			   n_pass::Int, x₀s::Array)
+	T, S = size(nim.ϵs)
+	m = [bellman_operator(nim, t, Vₜ₊₁) for (t, Vₜ₊₁) in enumerate(V[2:end])]
+	println("Models initialized")
+	println("Now running $(n_pass) sddp passes")
+	@showprogress for i in 1:n_pass
+		ϵ_scenario = nim.ϵs[:,rand(1:S)]
+		x₀ = [rand(x₀s)...]
+		xscenario = forward_pass(m, ϵ_scenario, x₀, nim.fₜ)
+		backward_pass!(m, V, xscenario)
 	end
-	return m, V
+	return m
 end
