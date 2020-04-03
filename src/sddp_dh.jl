@@ -1,19 +1,15 @@
 abstract type DecisionHazardModel end
 
-abstract type HazardDecisionModel end
-
-abstract type DecisionHazardDecisionModel end
-
-
-function solve!(m::JuMP.Model, xₜ::Vector{Float64})
+function solve!(::DecisionHazardModel, m::JuMP.Model, xₜ::Vector{Float64})
 	fix.(m[:xₜ], xₜ)
 	optimize!(m)
 	@assert termination_status(m) == MOI.OPTIMAL
 	return
 end
 
-function new_cut!(Vₜ::PolyhedralFunction, m::JuMP.Model, xₜ::Vector{Float64})
-	solve!(m, xₜ)
+function new_cut!(dhm::DecisionHazardModel, Vₜ::PolyhedralFunction, 
+				  m::JuMP.Model, xₜ::Vector{Float64})
+	solve!(dhm, m, xₜ)
 	λ = dual.(FixRef.(m[:xₜ]))
 	γ = objective_value(m) - λ'*xₜ
 	Vₜ.λ = cat(Vₜ.λ, λ', dims = 1)
@@ -21,7 +17,7 @@ function new_cut!(Vₜ::PolyhedralFunction, m::JuMP.Model, xₜ::Vector{Float64}
 	return
 end
 
-function update!(mₜ::JuMP.Model, Vₜ₊₁::PolyhedralFunction)
+function update!(::DecisionHazardModel, mₜ::JuMP.Model, Vₜ₊₁::PolyhedralFunction)
 	nξ = length(mₜ[:θ])
 	for ξ in 1:nξ
 		@constraint(mₜ, mₜ[:θ][ξ] >= Vₜ₊₁.λ[end,:]'*mₜ[:xₜ₊₁][ξ] + Vₜ₊₁.γ[end])
@@ -29,12 +25,13 @@ function update!(mₜ::JuMP.Model, Vₜ₊₁::PolyhedralFunction)
 	return
 end
 
-function control!(m::JuMP.Model, xₜ::Vector{Float64})
-	solve!(m, xₜ)
+function control!(dhm::DecisionHazardModel, m::JuMP.Model, xₜ::Vector{Float64})
+	solve!(dhm, m, xₜ)
 	return value.(m[:uₜ])
 end
 
-function forward_pass(m::Vector{JuMP.Model}, 
+function forward_pass(dhm::DecisionHazardModel,
+					  m::Vector{JuMP.Model}, 
 					  ξscenario::Vector{Float64},
 					  x₀::Vector{Float64},
 					  fₜ::Function)
@@ -43,23 +40,24 @@ function forward_pass(m::Vector{JuMP.Model},
 	xscenario[1,:] .= x₀
 	xₜ = x₀	
 	for (t, ξₜ₊₁) in enumerate(ξscenario)
-		uₜ = control!(m[t], xₜ)
+		uₜ = control!(dhm, m[t], xₜ)
 		xₜ = fₜ(t, xₜ, uₜ, [ξₜ₊₁])
 		xscenario[t+1,:] .= xₜ
 	end
 	return xscenario
 end
 
-function backward_pass!(m::Vector{JuMP.Model},
+function backward_pass!(dhm::DecisionHazardModel,
+						m::Vector{JuMP.Model},
 					  	V::Vector{PolyhedralFunction},
 					  	xscenario::Array{Float64,2})
 	T = length(m)
 	for t in T:-1:1
 		if t < T
-			update!(m[t], V[t+1])
+			update!(dhm, m[t], V[t+1])
 		end
 		xₜ = xscenario[t,:]
-		new_cut!(V[t], m[t], xₜ)
+		new_cut!(dhm, V[t], m[t], xₜ)
 	end
 	return 
 end
@@ -75,8 +73,8 @@ function sddp!(dhm::DecisionHazardModel,
 	@showprogress for i in 1:n_pass
 		ϵ_scenario = dhm.ϵs[:,rand(1:S)]
 		x₀ = [rand(x₀s)...]
-		xscenario = forward_pass(m, ϵ_scenario, x₀, dhm.fₜ)
-		backward_pass!(m, V, xscenario)
+		xscenario = forward_pass(dhm, m, ϵ_scenario, x₀, dhm.fₜ)
+		backward_pass!(dhm, m, V, xscenario)
 	end
 	return m
 end
