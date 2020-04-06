@@ -1,3 +1,5 @@
+# nim stands for Non Islanded Model
+
 struct NonIslandedModel <: DecisionHazardModel
 	Δt::Float64
 	capacity::Float64

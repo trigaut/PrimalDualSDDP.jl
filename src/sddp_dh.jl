@@ -84,3 +84,13 @@ function sddp!(dhm::DecisionHazardModel,
 	end
 	return m
 end
+
+function upper_bound(dhm::DecisionHazardModel,
+					 m::Vector{JuMP.Model}, 
+					 ξscenarios::Array{Float64, 3},
+					 x₀s::Vector{Float64},
+					 fₜ::Function,
+					 montecarlo_sample_size::Int = 1000)
+	x₀ = [rand(x₀s)...]
+	xscenarios = forward_pass(dhm, m, ξscenarios, x₀, dhm.fₜ)
+end
