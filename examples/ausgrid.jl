@@ -1,4 +1,3 @@
-
 using EnergyDataset, GRUtils
 
 using Revise

@@ -32,32 +32,38 @@ end
 
 function forward_pass(dhm::DecisionHazardModel,
 					  m::Vector{JuMP.Model}, 
-					  ξscenario::Vector{Float64},
+					  ξscenarios::Array{Float64, 3},
 					  x₀::Vector{Float64},
 					  fₜ::Function)
-	T = length(ξscenario)
-	xscenario = fill(0., T+1, length(x₀))
-	xscenario[1,:] .= x₀
-	xₜ = x₀	
-	for (t, ξₜ₊₁) in enumerate(ξscenario)
-		uₜ = control!(dhm, m[t], xₜ)
-		xₜ = fₜ(t, xₜ, uₜ, [ξₜ₊₁])
-		xscenario[t+1,:] .= xₜ
+	T = size(ξscenarios,1)
+	n_pass = size(ξscenarios,2)
+	xscenarios = fill(0., T+1, n_pass, length(x₀))
+	for pass in 1:n_pass
+		xₜ = x₀	
+		xscenarios[1,pass,:] .= x₀
+		for (t, ξₜ₊₁) in enumerate(eachrow(ξscenarios[:,pass,:]))
+			uₜ = control!(dhm, m[t], xₜ)
+			xₜ = fₜ(t, xₜ, uₜ, ξₜ₊₁)
+			xscenarios[t+1,pass,:] .= xₜ
+		end
 	end
-	return xscenario
+	return xscenarios
 end
 
 function backward_pass!(dhm::DecisionHazardModel,
 						m::Vector{JuMP.Model},
 					  	V::Vector{PolyhedralFunction},
-					  	xscenario::Array{Float64,2})
+					  	xscenarios::Array{Float64,3})
 	T = length(m)
+	n_pass = size(xscenarios, 2)
+	for pass in 1:n_pass
+		new_cut!(dhm, V[T], m[T], xscenarios[T,pass,:])
+	end
 	for t in T:-1:1
-		if t < T
-			update!(dhm, m[t], V[t+1])
+		update!(dhm, m[t], V[t+1])
+		for pass in 1:n_pass
+			new_cut!(dhm, V[t], m[t], xscenarios[t,pass,:])
 		end
-		xₜ = xscenario[t,:]
-		new_cut!(dhm, V[t], m[t], xₜ)
 	end
 	return 
 end
@@ -66,15 +72,15 @@ function sddp!(dhm::DecisionHazardModel,
 			   V::Array{PolyhedralFunction}, 
 			   n_pass::Int, 
 			   x₀s::Array)
-	T, S = size(dhm.ϵs)
+	T, S = size(dhm.ξs)
 	m = [bellman_operator(dhm, t, Vₜ₊₁) for (t, Vₜ₊₁) in enumerate(V[2:end])]
 	println("Bellman JuMP Models initialized")
 	println("Now running $(n_pass) sddp passes")
 	@showprogress for i in 1:n_pass
-		ϵ_scenario = dhm.ϵs[:,rand(1:S)]
+		ξscenarios = dhm.ξs[:,rand(1:S,1),:]
 		x₀ = [rand(x₀s)...]
-		xscenario = forward_pass(dhm, m, ϵ_scenario, x₀, dhm.fₜ)
-		backward_pass!(dhm, m, V, xscenario)
+		xscenarios = forward_pass(dhm, m, ξscenarios, x₀, dhm.fₜ)
+		backward_pass!(dhm, m, V, xscenarios)
 	end
 	return m
 end

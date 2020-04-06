@@ -13,7 +13,7 @@ struct NonIslandedModel <: DecisionHazardModel
 	β
 	ϵ
 	πϵ
-	ϵs
+	ξs
 	fₜ
 end
 
@@ -44,7 +44,7 @@ function NonIslandedModel(Δt::Float64, capacity::Float64,
 	NonIslandedModel(Δt, capacity, ρc, ρd, 
 					 pbmax, pbmin, pemax, 
 					 Δhmax, cbuy, csell, 
-					 α, β, ϵ, πϵ, ϵs, fₜ)
+					 α, β, ϵ, πϵ, ϵs[:,:,:], fₜ)
 end
 
 function bellman_operator(nim::NonIslandedModel, t::Int, Vₜ₊₁::PolyhedralFunction)
