@@ -91,3 +91,47 @@ function bellman_operator(nim::NonIslandedModel, t::Int, Vₜ₊₁::PolyhedralF
 
 	return m
 end
+
+function dual_bellman_operator(nim::NonIslandedModel, t::Int, Dₜ₊₁::PolyhedralFunction)
+	LIP = 1e6
+
+	m = JuMP.Model(optimizer_with_attributes(Clp.Optimizer, "LogLevel" => 0))
+	ϵ = nim.ϵ[t]
+	nξ = length(ϵ)
+
+	@variable(m, nˢ⁻ₜ)
+	@variable(m, nˢ⁺ₜ)
+	@variable(m, nʰₜ)
+
+
+	@variable(m, λˢₜ)
+	@variable(m, λʰₜ)
+	@variable(m, λʷₜ)
+
+	@expression(m, λˢₜ₊₁, λˢₜ + nˢ⁺ₜ - nˢ⁻ₜ)
+	@expression(m, λʰₜ₊₁, λʰₜ + nʰₜ)
+	@variable(m, -LIP <= λʷₜ₊₁[1:nξ] <= LIP)
+
+	@constraint(m, -LIP <= λˢₜ₊₁ <= LIP)
+	@constraint(m, -LIP <= λʰₜ₊₁ <= LIP)
+
+	@constraint(m, nim.πϵ[t]'*λʷₜ₊₁ == λʷₜ + nim.α[t]*sum(nim.πϵ[t])*nim.cbuy[t])
+	@constraint(m, nim.ρc*λˢₜ₊₁ - λʰₜ₊₁ - nim.ρc*nˢ⁻ₜ + nim.ρc*nˢ⁻ₜ + nʰₜ == -nim.cbuy[t])
+	@constraint(m, -1/nim.ρd*λˢₜ₊₁ - λʰₜ₊₁ + 1/nim.ρd*nˢ⁻ₜ - 1/nim.ρd*nˢ⁻ₜ + nʰₜ == nim.cbuy[t])
+
+	@variable(m, θ[1:nξ])
+	@objective(m, Min, sum(nim.πϵ[t][ξ]*(-( λʷₜ₊₁[ξ] + nim.cbuy[t])*ϵ[ξ] + θ[ξ]) for ξ in 1:nξ))
+
+	@expression(m, xₜ, [λˢₜ, λʰₜ, λʷₜ])
+	@expression(m, xₜ₊₁[ξ=1:nξ], [λˢₜ₊₁, λʰₜ₊₁, λʷₜ₊₁[ξ]])
+	@expression(m, uₜ, [nˢ⁻ₜ, nˢ⁺ₜ, nʰₜ])
+
+	for (λ, γ) in eachcut(Dₜ₊₁)
+		for ξ in 1:nξ
+			@constraint(m, θ[ξ] >= λ'*xₜ₊₁[ξ] + γ)
+		end
+	end
+
+	return m
+end
+
