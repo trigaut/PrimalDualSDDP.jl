@@ -1,15 +1,61 @@
 abstract type DecisionHazardModel end
 
-function solve!(::DecisionHazardModel, m::JuMP.Model, xₜ::Vector{Float64})
-	fix.(m[:xₜ], xₜ)
-	optimize!(m)
-	@assert termination_status(m) == MOI.OPTIMAL
+function initialize_lift_primal!(m::JuMP.Model,
+						  		 dhm::DecisionHazardModel,
+					      		 t::Int,
+					      		 Vₜ₊₁::PolyhedralFunction)
+	
+	nξ = length(m[:xₜ₊₁])
+	@variable(m, θ[1:nξ])
+	for (λ, γ) in eachcut(Vₜ₊₁)
+		for i in 1:nξ
+			@constraint(m, θ[i] >= λ'*m[:xₜ₊₁][i] + γ)
+		end
+	end
+	obj_expr = objective_function(m)
+	@objective(m, Min, obj_expr + sum(dhm.πξ[t][i]*θ[i] for i in 1:nξ))
 	return
 end
 
-function new_cut!(dhm::DecisionHazardModel, Vₜ::PolyhedralFunction, 
-				  m::JuMP.Model, xₜ::Vector{Float64})
-	solve!(dhm, m, xₜ)
+function initialize_lift_dual!(m::JuMP.Model,
+						  	   dhm::DecisionHazardModel,
+					      	   t::Int,
+					      	   Dₜ₊₁::PolyhedralFunction)
+	nξ = length(m[:μₜ₊₁])
+	@variable(m, θ[1:nξ])
+	for (λ, γ) in eachcut(Dₜ₊₁)
+		for i in 1:nξ
+			@constraint(m, θ[i] >= λ'*μₜ₊₁[i] + γ)
+		end
+	end
+	obj_expr = objective_function(m)
+	@objective(m, Min, obj_expr + sum(dhm.πξ[t][i]*θ[i] for i in 1:nξ))
+	return
+end
+
+function primalsolve!(::DecisionHazardModel,
+					   m::JuMP.Model, 
+					   xₜ::Vector{Float64})
+	fix.(m[:xₜ], xₜ, force=true)
+	optimize!(m)
+	@assert termination_status(m) == MOI.OPTIMAL println(m)
+	return
+end
+
+function dualsolve!(::DecisionHazardModel,
+					m::JuMP.Model, 
+					μₜ::Vector{Float64})
+	fix.(m[:μₜ], μₜ, force=true)
+	optimize!(m)
+	@assert termination_status(m) == MOI.OPTIMAL println(m)
+	return
+end
+
+function new_cut!(dhm::DecisionHazardModel, 
+				  Vₜ::PolyhedralFunction, 
+				  m::JuMP.Model, 
+				  xₜ::Vector{Float64})
+	primalsolve!(dhm, m, xₜ)
 	λ = dual.(FixRef.(m[:xₜ]))
 	γ = objective_value(m) - λ'*xₜ
 	Vₜ.λ = cat(Vₜ.λ, λ', dims = 1)
@@ -17,7 +63,21 @@ function new_cut!(dhm::DecisionHazardModel, Vₜ::PolyhedralFunction,
 	return
 end
 
-function update!(::DecisionHazardModel, mₜ::JuMP.Model, Vₜ₊₁::PolyhedralFunction)
+function dual_new_cut!(dhm::DecisionHazardModel, 
+				  	   Dₜ::PolyhedralFunction, 
+				  	   m::JuMP.Model, 
+				  	   μₜ::Vector{Float64})
+	dualsolve!(dhm, m, μₜ)
+	λ = dual.(FixRef.(m[:μₜ]))
+	γ = objective_value(m) - λ'*μₜ
+	Dₜ.λ = cat(Dₜ.λ, λ', dims = 1)
+	push!(Dₜ.γ, γ)
+	return
+end
+
+function update!(dhm::DecisionHazardModel, 
+				 mₜ::JuMP.Model, 
+				 Vₜ₊₁::PolyhedralFunction)
 	nξ = length(mₜ[:θ])
 	for ξ in 1:nξ
 		@constraint(mₜ, mₜ[:θ][ξ] >= Vₜ₊₁.λ[end,:]'*mₜ[:xₜ₊₁][ξ] + Vₜ₊₁.γ[end])
@@ -25,16 +85,35 @@ function update!(::DecisionHazardModel, mₜ::JuMP.Model, Vₜ₊₁::Polyhedral
 	return
 end
 
-function control!(dhm::DecisionHazardModel, m::JuMP.Model, xₜ::Vector{Float64})
-	solve!(dhm, m, xₜ)
+function dualupdate!(dhm::DecisionHazardModel, 
+				 	 mₜ::JuMP.Model, 
+				 	 Dₜ₊₁::PolyhedralFunction)
+	nξ = length(mₜ[:θ])
+	for ξ in 1:nξ
+		@constraint(mₜ, mₜ[:θ][ξ] >= Dₜ₊₁.λ[end,:]'*mₜ[:μₜ₊₁][ξ] + Dₜ₊₁.γ[end])
+	end
+	return
+end
+
+function control!(dhm::DecisionHazardModel, 
+				  m::JuMP.Model, 
+				  xₜ::Vector{Float64})
+	primalsolve!(dhm, m, xₜ)
 	return value.(m[:uₜ])
 end
+
+function dualstate!(dhm::DecisionHazardModel, 
+				  	m::JuMP.Model, 
+				  	μₜ::Vector{Float64})
+	dualsolve!(dhm, m, μₜ)
+	return map(μ♯ -> value.(μ♯), m[:μₜ₊₁])
+end
+
 
 function forward_pass(dhm::DecisionHazardModel,
 					  m::Vector{JuMP.Model}, 
 					  ξscenarios::Array{Float64, 3},
-					  x₀::Vector{Float64},
-					  fₜ::Function)
+					  x₀::Vector{Float64})
 	T = size(ξscenarios,1)
 	n_pass = size(ξscenarios,2)
 	xscenarios = fill(0., T+1, n_pass, length(x₀))
@@ -43,7 +122,7 @@ function forward_pass(dhm::DecisionHazardModel,
 		xscenarios[1,pass,:] .= x₀
 		for (t, ξₜ₊₁) in enumerate(eachrow(ξscenarios[:,pass,:]))
 			uₜ = control!(dhm, m[t], xₜ)
-			xₜ = fₜ(t, xₜ, uₜ, ξₜ₊₁)
+			xₜ = dhm.fₜ(t, xₜ, uₜ, ξₜ₊₁)
 			xscenarios[t+1,pass,:] .= xₜ
 		end
 	end
@@ -68,29 +147,82 @@ function backward_pass!(dhm::DecisionHazardModel,
 	return 
 end
 
+function dual_forward_pass(dhm::DecisionHazardModel,
+					  	   m::Vector{JuMP.Model}, 
+					  	   ξscenarios::Array{Float64, 3},
+					  	   μ₀::Vector{Float64})
+	T = size(ξscenarios,1)
+	n_pass = size(ξscenarios,2)
+	μscenarios = fill(0., T+1, n_pass, length(μ₀))
+	for pass in 1:n_pass
+		μₜ = μ₀	
+		μscenarios[1,pass,:] .= μ₀
+		for (t, ξₜ₊₁) in enumerate(eachrow(ξscenarios[:,pass,:]))
+			μₜ₊₁ = dualstate!(dhm, m[t], μₜ)
+			μscenarios[t+1,pass,:] .= rand(μₜ₊₁)
+			μₜ = μscenarios[t+1,pass,:]
+			println(μₜ)
+		end
+	end
+	return μscenarios
+end
+
+
+function dual_backward_pass!(dhm::DecisionHazardModel,
+							 m::Vector{JuMP.Model},
+					  		 D::Vector{PolyhedralFunction},
+					  		 μscenarios::Array{Float64,3})
+	T = length(m)
+	n_pass = size(μscenarios, 2)
+	for pass in 1:n_pass
+		dual_new_cut!(dhm, D[T], m[T], μscenarios[T,pass,:])
+	end
+	for t in T:-1:1
+		dualupdate!(dhm, m[t], D[t+1])
+		for pass in 1:n_pass
+			dual_new_cut!(dhm, D[t], m[t], μscenarios[t,pass,:])
+		end
+	end
+	return 
+end
+
+
 function sddp!(dhm::DecisionHazardModel, 
 			   V::Array{PolyhedralFunction}, 
 			   n_pass::Int, 
 			   x₀s::Array)
 	T, S = size(dhm.ξs)
-	m = [bellman_operator(dhm, t, Vₜ₊₁) for (t, Vₜ₊₁) in enumerate(V[2:end])]
+	m = [bellman_operator(dhm, t) for t in 1:T]
+	for (t, Vₜ₊₁) in enumerate(V[2:end])
+		initialize_lift_primal!(m[t], dhm, t, Vₜ₊₁)
+	end
 	println("Bellman JuMP Models initialized")
 	println("Now running $(n_pass) sddp passes")
 	@showprogress for i in 1:n_pass
 		ξscenarios = dhm.ξs[:,rand(1:S,1),:]
 		x₀ = [rand(x₀s)...]
-		xscenarios = forward_pass(dhm, m, ξscenarios, x₀, dhm.fₜ)
+		xscenarios = forward_pass(dhm, m, ξscenarios, x₀)
 		backward_pass!(dhm, m, V, xscenarios)
 	end
 	return m
 end
 
-function upper_bound(dhm::DecisionHazardModel,
-					 m::Vector{JuMP.Model}, 
-					 ξscenarios::Array{Float64, 3},
-					 x₀s::Vector{Float64},
-					 fₜ::Function,
-					 montecarlo_sample_size::Int = 1000)
-	x₀ = [rand(x₀s)...]
-	xscenarios = forward_pass(dhm, m, ξscenarios, x₀, dhm.fₜ)
+function dualsddp!(dhm::DecisionHazardModel, 
+			   		D::Array{PolyhedralFunction}, 
+			   		n_pass::Int, 
+			   		μ₀s::Array)
+	T, S = size(dhm.ξs)
+	m = [dual_bellman_operator(dhm, t) for t in 1:T]
+	for (t, Dₜ₊₁) in enumerate(D[2:end])
+		initialize_lift_dual!(m[t], dhm, t, Dₜ₊₁)
+	end
+	println("Bellman JuMP Models initialized")
+	println("Now running $(n_pass) sddp passes")
+	@showprogress for i in 1:n_pass
+		ξscenarios = dhm.ξs[:,rand(1:S,1),:]
+		μ₀ = [rand(μ₀s)...]
+		μscenarios = dual_forward_pass(dhm, m, ξscenarios, μ₀)
+		dual_backward_pass!(dhm, m, D, μscenarios)
+	end
+	return m
 end
