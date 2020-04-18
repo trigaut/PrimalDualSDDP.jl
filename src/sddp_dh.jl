@@ -25,7 +25,7 @@ function initialize_lift_dual!(m::JuMP.Model,
 	@variable(m, θ[1:nξ])
 	for (λ, γ) in eachcut(Dₜ₊₁)
 		for i in 1:nξ
-			@constraint(m, θ[i] >= λ'*μₜ₊₁[i] + γ)
+			@constraint(m, θ[i] >= λ'*m[:μₜ₊₁][i] + γ)
 		end
 	end
 	obj_expr = objective_function(m)
@@ -79,8 +79,8 @@ function update!(dhm::DecisionHazardModel,
 				 mₜ::JuMP.Model, 
 				 Vₜ₊₁::PolyhedralFunction)
 	nξ = length(mₜ[:θ])
-	for ξ in 1:nξ
-		@constraint(mₜ, mₜ[:θ][ξ] >= Vₜ₊₁.λ[end,:]'*mₜ[:xₜ₊₁][ξ] + Vₜ₊₁.γ[end])
+	for i in 1:nξ
+		@constraint(mₜ, mₜ[:θ][i] >= Vₜ₊₁.λ[end,:]'*mₜ[:xₜ₊₁][i] + Vₜ₊₁.γ[end])
 	end
 	return
 end
@@ -89,8 +89,8 @@ function dualupdate!(dhm::DecisionHazardModel,
 				 	 mₜ::JuMP.Model, 
 				 	 Dₜ₊₁::PolyhedralFunction)
 	nξ = length(mₜ[:θ])
-	for ξ in 1:nξ
-		@constraint(mₜ, mₜ[:θ][ξ] >= Dₜ₊₁.λ[end,:]'*mₜ[:μₜ₊₁][ξ] + Dₜ₊₁.γ[end])
+	for i in 1:nξ
+		@constraint(mₜ, mₜ[:θ][i] >= Dₜ₊₁.λ[end,:]'*mₜ[:μₜ₊₁][i] + Dₜ₊₁.γ[end])
 	end
 	return
 end
@@ -161,7 +161,6 @@ function dual_forward_pass(dhm::DecisionHazardModel,
 			μₜ₊₁ = dualstate!(dhm, m[t], μₜ)
 			μscenarios[t+1,pass,:] .= rand(μₜ₊₁)
 			μₜ = μscenarios[t+1,pass,:]
-			println(μₜ)
 		end
 	end
 	return μscenarios

@@ -1,6 +1,6 @@
 module OlenEff
 
-using JuMP, Clp, Statistics, MultivariateStats, Clustering, ProgressMeter, CPLEX, Dualization
+using JuMP, Clp, Statistics, MultivariateStats, Clustering, ProgressMeter, Dualization
 
 include("statistics.jl")
 include("utilities.jl")

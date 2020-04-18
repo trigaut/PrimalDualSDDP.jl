@@ -75,11 +75,11 @@ function bellman_operator(nim::NonIslandedModel2, t::Int)
 	nξ = size(ξ,1)
 	@variable(m, 0 <= dₜ <= 1e2)
 	@variable(m, 0 <= pₜ <= 1e2)
-	@variable(m, 0 <= dₜ₊₁[i=1:nξ] <= 1e6)
-	@variable(m, 0 <= pₜ₊₁[i=1:nξ] <= 1e6)
+	@variable(m, -1e6 <= dₜ₊₁[i=1:nξ] <= 1e6)
+	@variable(m, -1e6 <= pₜ₊₁[i=1:nξ] <= 1e6)
 	
-	@expression(m, dₜ₊₁ .== ξ[:,1] .+ nim.α[t,1] * dₜ)
-	@expression(m, pₜ₊₁ .== ξ[:,2] .+ nim.α[t,2] * pₜ)
+	@constraint(m, dₜ₊₁ .== ξ[:,1] .+ nim.α[t,1] * dₜ)
+	@constraint(m, pₜ₊₁ .== ξ[:,2] .+ nim.α[t,2] * pₜ)
 
 	@expression(m, importₜ₊₁[i=1:nξ], dₜ₊₁[i] - pₜ₊₁[i] + uₜ⁺ - uₜ⁻)
 	@variable(m, ebuy[1:nξ] >= 0.)
@@ -115,17 +115,20 @@ function dual_bellman_operator(nim::NonIslandedModel2, t::Int)
 		set_normalized_coefficient(con, adjointvar, 1.)
 	end
 
-	xₜ₊₁ = unique(cat(map(t -> name.(t), m[:xₜ₊₁])..., dims=1))
+	xₜ₊₁uniquenames = unique(cat(map(t -> name.(t), m[:xₜ₊₁])..., dims=1))
 
 	info =  VariableInfo(true, -LIP, true, LIP, false, NaN, 
 						 false, NaN, false, false)
 
-	md[:μₜ₊₁] = VariableRef[]
-	for var in xₜ₊₁
+	for var in xₜ₊₁uniquenames
 		con = JuMP.constraint_by_name(md, var)
 		adjointvar = add_variable(md, build_variable(error, info), "μ"*var)
-		push!(md[:μₜ₊₁], adjointvar)
 		set_normalized_coefficient(con, adjointvar, -1.)
+	end
+	
+	md[:μₜ₊₁] = Array{Array{VariableRef,1},1}()
+	for	var_array in m[:xₜ₊₁]
+		push!(md[:μₜ₊₁], variable_by_name.(md, "μ".*name.(var_array)))
 	end
 
 	obj_expr = objective_function(md)

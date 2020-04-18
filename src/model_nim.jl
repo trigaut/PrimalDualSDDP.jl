@@ -158,8 +158,8 @@ end
 function dual_bellman_operator(nim::NonIslandedModel, t::Int)
 	LIP = 1e10
 
-	# m = JuMP.Model(optimizer_with_attributes(Clp.Optimizer, "LogLevel" => 0))
-	m = JuMP.Model(CPLEX.Optimizer)
+	m = JuMP.Model(optimizer_with_attributes(Clp.Optimizer, "LogLevel" => 0))
+	
 	ξ = nim.ξ[t]
 	nξ = length(ξ)
 
