@@ -42,10 +42,6 @@ push!(V, OlenEff.PolyhedralFunction([-offpeak 0. 0. 0.], [0.]))
 x₀s = collect(Base.product([0., 10.], [5., 10., 20.], [1.], [0.]))
 const m = OlenEff.sddp!(nim, V, 20, x₀s)
 
-const D = [OlenEff.PolyhedralFunction([0. 0. 0. 0.], [-100.]) for t in 1:T]
-push!(D, OlenEff.PolyhedralFunction([0. 0. 0. 0.], [0.]))
-
-
 λ₀s = collect(eachrow(V[1].λ))
-const D = [OlenEff.PolyhedralFunction([0. 0. 0. 0.], [-1e6]) for t in 1:T+1]
-md = OlenEff.dualsddp!(nim, D, 20, λ₀s)
+const D = [OlenEff.PolyhedralFunction([0. 0. 0. 0.], [-1e4]) for t in 1:T+1]
+md = OlenEff.dualsddp!(nim, D, 100, λ₀s, nprune = 10)

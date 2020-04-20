@@ -209,7 +209,8 @@ end
 function dualsddp!(dhm::DecisionHazardModel, 
 			   		D::Array{PolyhedralFunction}, 
 			   		n_pass::Int, 
-			   		μ₀s::Array)
+			   		μ₀s::Array;
+			   		nprune = -1)
 	T, S = size(dhm.ξs)
 	m = [dual_bellman_operator(dhm, t) for t in 1:T]
 	for (t, Dₜ₊₁) in enumerate(D[2:end])
@@ -222,6 +223,14 @@ function dualsddp!(dhm::DecisionHazardModel,
 		μ₀ = [rand(μ₀s)...]
 		μscenarios = dual_forward_pass(dhm, m, ξscenarios, μ₀)
 		dual_backward_pass!(dhm, m, D, μscenarios)
+		if mod(i,nprune) == 0
+			D[1] = unique(D[1])
+			for (t, Dₜ₊₁) in enumerate(D[2:end])
+				D[t+1] = unique(Dₜ₊₁)
+				m[t] = dual_bellman_operator(dhm, t)
+				initialize_lift_dual!(m[t], dhm, t, D[t+1])
+			end
+		end
 	end
 	return m
 end

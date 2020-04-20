@@ -1,4 +1,5 @@
 # nim stands for Non Islanded Model
+const LIP = 162.
 
 mutable struct NonIslandedModel2 <: DecisionHazardModel
 	Δt::Float64
@@ -75,8 +76,8 @@ function bellman_operator(nim::NonIslandedModel2, t::Int)
 	nξ = size(ξ,1)
 	@variable(m, 0 <= dₜ <= 1e2)
 	@variable(m, 0 <= pₜ <= 1e2)
-	@variable(m, -1e6 <= dₜ₊₁[i=1:nξ] <= 1e6)
-	@variable(m, -1e6 <= pₜ₊₁[i=1:nξ] <= 1e6)
+	@variable(m, -1e2 <= dₜ₊₁[i=1:nξ] <= 1e2)
+	@variable(m, -1e2 <= pₜ₊₁[i=1:nξ] <= 1e2)
 	
 	@constraint(m, dₜ₊₁ .== ξ[:,1] .+ nim.α[t,1] * dₜ)
 	@constraint(m, pₜ₊₁ .== ξ[:,2] .+ nim.α[t,2] * pₜ)
@@ -99,7 +100,6 @@ function bellman_operator(nim::NonIslandedModel2, t::Int)
 end
 
 function dual_bellman_operator(nim::NonIslandedModel2, t::Int)
-	LIP = 1e6
 	m = bellman_operator(nim, t)
 	md = dualize(m; dual_names = DualNames("", ""))
 
