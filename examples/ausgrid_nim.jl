@@ -29,12 +29,12 @@ const cbuy = cat(fill(offpeak, 7*2),
               fill(offpeak, 2*2), 
               dims=1);
 
-const nim = PrimalDualSDDP.NonIslandedModel2(Δt, capacity, 
-									 		ρc, ρd, pbmax, 
-									 		pbmin, pemax, Δhmax, 
-						 			 		cbuy, csell, 
-						 			 		permutedims([5., 10.][:,:,:,], [3,2,1]).*train_data[:,days,:],
-						 			 		10)
+const nim = PrimalDualSDDP.NonIslandedModel(Δt, capacity, 
+                                            ρc, ρd, pbmax, 
+                                            pbmin, pemax, Δhmax, 
+                                            cbuy, csell, 
+                                            permutedims([5., 10.][:,:,:,], [3,2,1]).*train_data[:,days,:],
+                                            10)
 
 const V = [PrimalDualSDDP.PolyhedralFunction([0. 0. 0. 0.], [-100.]) for t in 1:T]
 push!(V, PrimalDualSDDP.PolyhedralFunction([-offpeak 0. 0. 0.], [0.]))
@@ -43,5 +43,6 @@ x₀s = collect(Base.product([0., 10.], [5., 10., 20.], [1.], [0.]))
 const m = PrimalDualSDDP.primalsddp!(nim, V, 50, x₀s, nprune = 10);
 
 λ₀s = collect(eachrow(V[1].λ))
-const D = [PrimalDualSDDP.PolyhedralFunction([0. 0. 0. 0.], [-1e5]) for t in 1:T+1]
+const D = [PrimalDualSDDP.PolyhedralFunction([0. 0. 0. 0.], [-1e5]) for t in 1:T]
+push!(D, PrimalDualSDDP.PolyhedralFunction([0. 0. 0. 0.], [0.]))
 md = PrimalDualSDDP.dualsddp!(nim, D, 20, λ₀s, nprune = 10);

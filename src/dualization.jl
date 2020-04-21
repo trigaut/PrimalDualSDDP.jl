@@ -1,4 +1,4 @@
-function auto_dual_bellman_operator(dhm::DecisionHazardModel, t::Int, lip::Float64)
+function auto_dual_bellman_operator(dhm::DecisionHazardModel, t::Int, lip::Real)
     m = bellman_operator(dhm, t)
     md = dualize(m; dual_names = DualNames("", ""))
 
