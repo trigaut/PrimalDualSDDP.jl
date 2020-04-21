@@ -31,8 +31,16 @@ function add_cut!(V, λ, γ)
     return
 end
 
+function remove_cut!(V::PolyhedralFunction, cut_index::Int)
+    V.λ = V.λ[(1:cut_index-1)∪(cut_index+1:end),:] 
+    V.γ = V.γ[(1:cut_index-1)∪(cut_index+1:end)]
+    return
+end
+
+
 function remove_cut(V::PolyhedralFunction, cut_index::Int)
-    PolyhedralFunction(V.λ[(1:cut_index-1)∪(cut_index+1:end),:], V.γ[(1:cut_index-1)∪(cut_index+1:end)])
+    return PolyhedralFunction(V.λ[(1:cut_index-1)∪(cut_index+1:end),:], 
+                              V.γ[(1:cut_index-1)∪(cut_index+1:end)])
 end
 
 function δ(point::Vector{Float64}, reg::Float64)
@@ -40,6 +48,7 @@ function δ(point::Vector{Float64}, reg::Float64)
     V = PolyhedralFunction()
     for (i,p) in enumerate(point)
         add_cut!(V, [(i==j)*reg for j in 1:nx], p)
+        add_cut!(V, [-(i==j)*reg for j in 1:nx], p)
     end
     return V
 end

@@ -44,4 +44,4 @@ const m = PrimalDualSDDP.primalsddp!(nim, V, 20, x₀s)
 λ₀s = collect(eachrow(V[1].λ))
 const D = [PrimalDualSDDP.PolyhedralFunction([0. 0. 0.], [-1e10]) for t in 1:T]
 push!(D, PrimalDualSDDP.δ([-offpeak, 0., 0.], 1e3))
-const md = PrimalDualSDDP.dualsddp!(nim, D, 100, λ₀s)
+const md = PrimalDualSDDP.dualsddp!(nim, D, 100, λ₀s, nprune = 50)
