@@ -1,4 +1,4 @@
-name = "OlenEff"
+name = "PrimalDualSDDP"
 uuid = "7d28ce30-a49f-4585-895b-ba4811baa33d"
 authors = ["trigaut <tristan.rigaut@gmail.com>"]
 version = "0.1.0"

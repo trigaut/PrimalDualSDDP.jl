@@ -1,4 +1,4 @@
-module OlenEff
+module PrimalDualSDDP
 
 using JuMP, Clp, Statistics, MultivariateStats, Clustering, ProgressMeter, Dualization
 
@@ -7,7 +7,10 @@ include("utilities.jl")
 include("polyhedral.jl")
 include("sddp_dh.jl")
 # include("sddp_hd.jl")
-include("models/model_nim.jl")
-include("models/model_nim2.jl")
+include("dualization.jl")
+
+include("models/nim_dh.jl")
+include("models/nim_net_dh.jl")
+include("models/water_dam_hd.jl")
 
 end # module

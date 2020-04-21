@@ -1,5 +1,4 @@
 # nim stands for Non Islanded Model
-const LIP = 162.
 
 mutable struct NonIslandedModel2 <: DecisionHazardModel
 	Δt::Float64
