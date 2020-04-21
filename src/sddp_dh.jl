@@ -186,22 +186,33 @@ function dual_backward_pass!(dhm::DecisionHazardModel,
 end
 
 
-function sddp!(dhm::DecisionHazardModel, 
-			   V::Array{PolyhedralFunction}, 
-			   n_pass::Int, 
-			   x₀s::Array)
+function primalsddp!(dhm::DecisionHazardModel, 
+					 V::Array{PolyhedralFunction}, 
+					 n_pass::Int, 
+					 x₀s::Array;
+					 nprune = n_pass)
+	println("** Primal SDDP with $(n_pass) passes, $(div(n_pass,nprune)) pruning  **")
 	T, S = size(dhm.ξs)
 	m = [bellman_operator(dhm, t) for t in 1:T]
 	for (t, Vₜ₊₁) in enumerate(V[2:end])
 		initialize_lift_primal!(m[t], dhm, t, Vₜ₊₁)
 	end
-	println("Bellman JuMP Models initialized")
-	println("Now running $(n_pass) sddp passes")
+	println("Primal Bellman JuMP Models initialized")
+	println("Now running sddp passes")
 	@showprogress for i in 1:n_pass
 		ξscenarios = dhm.ξs[:,rand(1:S,1),:]
 		x₀ = [rand(x₀s)...]
 		xscenarios = forward_pass(dhm, m, ξscenarios, x₀)
 		backward_pass!(dhm, m, V, xscenarios)
+		if mod(i,nprune) == 0
+			println("\n Performing pruning number $(div(i,nprune))")
+			V[1] = unique(V[1])
+			for (t, Vₜ₊₁) in enumerate(V[2:end])
+				V[t+1] = unique(Vₜ₊₁)
+				m[t] = bellman_operator(dhm, t)
+				initialize_lift_primal!(m[t], dhm, t, V[t+1])
+			end
+		end
 	end
 	return m
 end
@@ -210,20 +221,22 @@ function dualsddp!(dhm::DecisionHazardModel,
 			   		D::Array{PolyhedralFunction}, 
 			   		n_pass::Int, 
 			   		μ₀s::Array;
-			   		nprune = -1)
+			   		nprune = n_pass)
+	println("** Dual SDDP with $(n_pass) passes, $(div(n_pass,nprune)) pruning  **")
 	T, S = size(dhm.ξs)
 	m = [dual_bellman_operator(dhm, t) for t in 1:T]
 	for (t, Dₜ₊₁) in enumerate(D[2:end])
 		initialize_lift_dual!(m[t], dhm, t, Dₜ₊₁)
 	end
-	println("Bellman JuMP Models initialized")
-	println("Now running $(n_pass) sddp passes")
+	println("Dual Bellman JuMP Models initialized")
+	println("Now running sddp passes")
 	@showprogress for i in 1:n_pass
 		ξscenarios = dhm.ξs[:,rand(1:S,1),:]
 		μ₀ = [rand(μ₀s)...]
 		μscenarios = dual_forward_pass(dhm, m, ξscenarios, μ₀)
 		dual_backward_pass!(dhm, m, D, μscenarios)
 		if mod(i,nprune) == 0
+			println("\n Performing pruning number $(div(i,nprune))")
 			D[1] = unique(D[1])
 			for (t, Dₜ₊₁) in enumerate(D[2:end])
 				D[t+1] = unique(Dₜ₊₁)

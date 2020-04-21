@@ -7,7 +7,7 @@ include("utilities.jl")
 include("polyhedral.jl")
 include("sddp_dh.jl")
 # include("sddp_hd.jl")
-include("model_nim.jl")
-include("model_nim2.jl")
+include("models/model_nim.jl")
+include("models/model_nim2.jl")
 
 end # module

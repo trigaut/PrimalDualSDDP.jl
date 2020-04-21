@@ -20,6 +20,10 @@ function Base.unique(V::PolyhedralFunction)
 	return PolyhedralFunction(Vu[:,1:end-1], Vu[:,end])
 end
 
+function remove_cut(V::PolyhedralFunction, cut_index::Int)
+	PolyhedralFunction(V.λ[(1:cut_index-1)∪(cut_index+1:end),:], V.γ[(1:cut_index-1)∪(cut_index+1:end)])
+end
+
 function fenchel_transform(D::PolyhedralFunction, 
 						   x::Array{Float64, 1}, 
 						   lip::Float64)
