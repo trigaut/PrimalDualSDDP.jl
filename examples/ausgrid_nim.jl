@@ -2,7 +2,7 @@ using EnergyDataset, GRUtils
 
 using Revise
 
-using OlenEff
+using PrimalDualSDDP
 
 const train_data = EnergyDataset.load_customer_train_data(80);
 const T = size(train_data,1)
@@ -29,19 +29,19 @@ const cbuy = cat(fill(offpeak, 7*2),
               fill(offpeak, 2*2), 
               dims=1);
 
-const nim = OlenEff.NonIslandedModel2(Δt, capacity, 
-									 ρc, ρd, pbmax, 
-									 pbmin, pemax, Δhmax, 
-						 			 cbuy, csell, 
-						 			 permutedims([5., 10.][:,:,:,], [3,2,1]).*train_data[:,days,:],
-						 			 10)
+const nim = PrimalDualSDDP.NonIslandedModel2(Δt, capacity, 
+									 		ρc, ρd, pbmax, 
+									 		pbmin, pemax, Δhmax, 
+						 			 		cbuy, csell, 
+						 			 		permutedims([5., 10.][:,:,:,], [3,2,1]).*train_data[:,days,:],
+						 			 		10)
 
-const V = [OlenEff.PolyhedralFunction([0. 0. 0. 0.], [-100.]) for t in 1:T]
-push!(V, OlenEff.PolyhedralFunction([-offpeak 0. 0. 0.], [0.]))
+const V = [PrimalDualSDDP.PolyhedralFunction([0. 0. 0. 0.], [-100.]) for t in 1:T]
+push!(V, PrimalDualSDDP.PolyhedralFunction([-offpeak 0. 0. 0.], [0.]))
 
 x₀s = collect(Base.product([0., 10.], [5., 10., 20.], [1.], [0.]))
-const m = OlenEff.primalsddp!(nim, V, 50, x₀s, nprune = 10);
+const m = PrimalDualSDDP.primalsddp!(nim, V, 50, x₀s, nprune = 10);
 
 λ₀s = collect(eachrow(V[1].λ))
-const D = [OlenEff.PolyhedralFunction([0. 0. 0. 0.], [-1e5]) for t in 1:T+1]
-md = OlenEff.dualsddp!(nim, D, 20, λ₀s, nprune = 10);
+const D = [PrimalDualSDDP.PolyhedralFunction([0. 0. 0. 0.], [-1e5]) for t in 1:T+1]
+md = PrimalDualSDDP.dualsddp!(nim, D, 20, λ₀s, nprune = 10);
