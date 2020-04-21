@@ -25,15 +25,6 @@ function primalsolve!(::HazardDecisionModel,
     return
 end
 
-function dualsolve!(::HazardDecisionModel,
-                    m::JuMP.Model, 
-                    μₜ::Vector{Float64})
-    fix.(m[:μₜ], μₜ, force=true)
-    optimize!(m)
-    @assert termination_status(m) == MOI.OPTIMAL println(m)
-    return
-end
-
 function new_cut!(hdm::HazardDecisionModel, 
                   Vₜ::PolyhedralFunction, 
                   m::JuMP.Model, 

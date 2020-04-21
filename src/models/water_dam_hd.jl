@@ -59,7 +59,7 @@ function dual_bellman_operator(wdm::WaterDamModel, t::Int)
     @expression(m, xₜ, [lₜ])
     @expression(m, xₜ₊₁[i=1:nξ], [lₜ₊₁[i]])
     
-    md = auto_dual_bellman_operator(m, 10.)
+    md = auto_dual_bellman_operator(m, 1.)
     set_optimizer(md, optimizer_with_attributes(Clp.Optimizer, "LogLevel" => 0))
 
     return md
