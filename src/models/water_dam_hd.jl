@@ -17,7 +17,7 @@ function WaterDamModel(Δt::Float64, capacity::Float64,
     ξ, πξ = discrete_white_noise(rainfall_scenarios, bins)
 
     function fₜ(t, xₜ, uₜ₊₁, ξₜ₊₁)
-        return [xₜ[1] - uₜ₊₁[1] + ξₜ₊₁[1]]
+        return [xₜ[1] - uₜ₊₁[1] + ξₜ₊₁[1] - uₜ₊₁[2]]
     end
 
     return WaterDamModel(Δt, capacity, umax, csell, 
@@ -59,7 +59,7 @@ function dual_bellman_operator(wdm::WaterDamModel, t::Int)
     @expression(m, xₜ, [lₜ])
     @expression(m, xₜ₊₁[i=1:nξ], [lₜ₊₁[i]])
     
-    md = auto_dual_bellman_operator(m, 1.)
+    md = auto_dual_bellman_operator(m, wdm.πξ[t], 1.)
     set_optimizer(md, optimizer_with_attributes(Clp.Optimizer, "LogLevel" => 0))
 
     return md

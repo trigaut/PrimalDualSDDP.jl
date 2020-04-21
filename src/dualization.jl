@@ -1,4 +1,4 @@
-function auto_dual_bellman_operator(m::JuMP.Model, lip::Real)
+function auto_dual_bellman_operator(m::JuMP.Model, weights::Vector{Float64}, lip::Real)
     md = dualize(m; dual_names = DualNames("", ""))
 
     nx = length(m[:xₜ]) 
@@ -21,7 +21,13 @@ function auto_dual_bellman_operator(m::JuMP.Model, lip::Real)
     for var in xₜ₊₁uniquenames
         con = JuMP.constraint_by_name(md, var)
         adjointvar = add_variable(md, build_variable(error, info), "μ"*var)
-        set_normalized_coefficient(con, adjointvar, -1.)
+        varindex = match(r".*\[(\d+)\]", var)
+        if isnothing(varindex)
+            set_normalized_coefficient(con, adjointvar, -sum(weights))
+        else
+            varindex = parse(Int, varindex.captures[1])
+            set_normalized_coefficient(con, adjointvar, -weights[varindex])
+        end
     end
     
     md[:μₜ₊₁] = Array{Array{VariableRef,1},1}()
@@ -37,6 +43,6 @@ end
 
 function auto_dual_bellman_operator(dhm::DecisionHazardModel, t::Int, lip::Real)
     m = bellman_operator(dhm, t)
-    md = auto_dual_bellman_operator(m, lip)
+    md = auto_dual_bellman_operator(m, dhm.πξ[t], lip)
     return md
 end
