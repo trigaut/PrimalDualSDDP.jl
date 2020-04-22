@@ -74,7 +74,9 @@ function bellman_operator(nim::NonIslandedNetHDModel, t::Int)
     return m
 end
 
-function dual_bellman_operator(nim::NonIslandedNetHDModel, t::Int)
+function dual_bellman_operator(nim::NonIslandedNetHDModel, 
+                               t::Int, 
+                               l1_regularization::Real)
 
     m = JuMP.Model()
     ξ = nim.ξ[t]
@@ -104,7 +106,7 @@ function dual_bellman_operator(nim::NonIslandedNetHDModel, t::Int)
     @expression(m, xₜ, [socₜ, hₜ])
     @expression(m, xₜ₊₁[i=1:nξ], [socₜ₊₁[i], hₜ₊₁[i]])
 
-    md = auto_dual_bellman_operator(m, nim.πξ[t], 162)
+    md = auto_dual_bellman_operator(m, nim.πξ[t], l1_regularization)
     set_optimizer(md, optimizer_with_attributes(Clp.Optimizer, "LogLevel" => 0))
 
     md

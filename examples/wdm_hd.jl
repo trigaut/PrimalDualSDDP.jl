@@ -24,10 +24,16 @@ const wdm = PrimalDualSDDP.WaterDamModel(Δt, cap,
 const V = [PrimalDualSDDP.PolyhedralFunction([0.]', [-1e4]) for t in 1:T]
 push!(V, PrimalDualSDDP.PolyhedralFunction([0.]', [0.]))
 x₀s = [(0.,)]
-const m = PrimalDualSDDP.primalsddp!(wdm, V, 50, x₀s, nprune = 10);
+const m = PrimalDualSDDP.primalsddp!(wdm, V, 100, x₀s, nprune = 10);
+
+l1_regularization = maximum(PrimalDualSDDP.lipschitz_constant.(V))
 
 const D = [PrimalDualSDDP.PolyhedralFunction([0.]', [-1e4]) for t in 1:T]
-push!(D, PrimalDualSDDP.δ([0.], 1e5))
+push!(D, PrimalDualSDDP.δ([0.], 1e4))
 
 const λ₀s = collect(eachrow(V[1].λ))
-const md = PrimalDualSDDP.dualsddp!(wdm, D, 50, λ₀s, nprune = 10);
+const md = PrimalDualSDDP.dualsddp!(wdm, D, 100, λ₀s, 
+                                    nprune = 10, 
+                                    l1_regularization = l1_regularization);
+
+const Vinner = PrimalDualSDDP.PolyhedralFenchelTransform.(D, l1_regularization)

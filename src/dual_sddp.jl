@@ -96,10 +96,11 @@ function dualsddp!(lbm::LinearBellmanModel,
                     D::Array{PolyhedralFunction}, 
                     n_pass::Int, 
                     μ₀s::Array;
-                    nprune = n_pass)
+                    nprune::Int = n_pass,
+                    l1_regularization::Real = 1e6)
     println("** Dual SDDP with $(n_pass) passes, $(div(n_pass,nprune)) pruning  **")
     T, S = size(lbm.ξs)
-    m = [dual_bellman_operator(lbm, t) for t in 1:T]
+    m = [dual_bellman_operator(lbm, t, l1_regularization) for t in 1:T]
     for (t, Dₜ₊₁) in enumerate(D[2:end])
         initialize_lift_dual!(m[t], lbm, t, Dₜ₊₁)
     end
@@ -115,7 +116,7 @@ function dualsddp!(lbm::LinearBellmanModel,
             D[1] = unique(D[1])
             for (t, Dₜ₊₁) in enumerate(D[2:end])
                 D[t+1] = unique(Dₜ₊₁)
-                m[t] = dual_bellman_operator(lbm, t)
+                m[t] = dual_bellman_operator(lbm, t, l1_regularization)
                 initialize_lift_dual!(m[t], lbm, t, D[t+1])
             end
         end

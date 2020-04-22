@@ -3,6 +3,11 @@ mutable struct PolyhedralFunction
     γ::Array{Float64,1}
 end
 
+mutable struct PolyhedralFenchelTransform
+    V::PolyhedralFunction
+    l1_regularization::Real
+end
+
 ncuts(V::PolyhedralFunction) = size(V.λ, 1)
 dim(V::PolyhedralFunction) = size(V.λ, 2)
 eachcut(V::PolyhedralFunction) = zip(eachrow(V.λ), V.γ)
@@ -11,8 +16,20 @@ function PolyhedralFunction()
     return PolyhedralFunction(Array{Float64,2}(undef, 0,0), Vector{Float64}())
 end
 
+function lipschitz_constant(V::PolyhedralFunction, pnorm::Real = 1)
+    return maximum([norm(λ,pnorm) for λ in eachrow(V.λ)])
+end
+
+function PolyhedralFenchelTransform(V::PolyhedralFunction)
+    PolyhedralFenchelTransform(V, 0.)
+end
+
 function (V::PolyhedralFunction)(x::Array{Float64,1})
-    maximum(V.λ*x .+ V.γ)
+        return maximum(V.λ*x .+ V.γ)
+end
+
+function (D::PolyhedralFenchelTransform)(x::Array{Float64,1})
+    return fenchel_transform_as_sup(D.V, x, D.l1_regularization)
 end
 
 function Base.unique(V::PolyhedralFunction)
@@ -53,9 +70,9 @@ function δ(point::Vector{Float64}, reg::Float64)
     return V
 end
 
-function fenchel_transform(D::PolyhedralFunction, 
-                           x::Array{Float64, 1}, 
-                           lip::Float64)
+function fenchel_transform_as_sup(D::PolyhedralFunction, 
+                                  x::Array{Float64, 1}, 
+                                  lip::Real)
     m = Model(optimizer_with_attributes(Clp.Optimizer, "LogLevel" => 0))
     nx = size(D.λ, 2)
     @variable(m, -lip <= λ[1:nx] <= lip)
@@ -68,9 +85,9 @@ function fenchel_transform(D::PolyhedralFunction,
     return objective_value(m)
 end
 
-function regularized_fenchel_transform(D::PolyhedralFunction, 
-                                       x::Array{Float64, 1}, 
-                                       lip::Float64)
+function fenchel_transform_as_inf(D::PolyhedralFunction, 
+                                  x::Array{Float64, 1}, 
+                                  lip::Real)
     m = Model(optimizer_with_attributes(Clp.Optimizer, "LogLevel" => 0))
     nc, nx = size(D.λ)
     @variable(m, σ[1:nc] >= 0)

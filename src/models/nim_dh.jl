@@ -98,8 +98,10 @@ function bellman_operator(nim::NonIslandedModel, t::Int)
     return m
 end
 
-function dual_bellman_operator(nim::NonIslandedModel, t::Int)
-    md = auto_dual_bellman_operator(nim, t, 162)
+function dual_bellman_operator(nim::NonIslandedModel, 
+                               t::Int,
+                               l1_regularization::Real)
+    md = auto_dual_bellman_operator(nim, t, l1_regularization)
     set_optimizer(md, optimizer_with_attributes(Clp.Optimizer, "LogLevel" => 0))
 
     md

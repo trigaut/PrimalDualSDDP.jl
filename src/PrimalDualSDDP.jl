@@ -1,6 +1,8 @@
 module PrimalDualSDDP
 
-using JuMP, Clp, Statistics, MultivariateStats, Clustering, ProgressMeter, Dualization
+using JuMP, Clp, Dualization
+using LinearAlgebra, Statistics, MultivariateStats, Clustering 
+using ProgressMeter
 
 abstract type LinearBellmanModel end
 

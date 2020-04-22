@@ -43,7 +43,8 @@ function bellman_operator(wdm::WaterDamModel, t::Int)
     return m
 end
 
-function dual_bellman_operator(wdm::WaterDamModel, t::Int)
+function dual_bellman_operator(wdm::WaterDamModel, t::Int, 
+                              l1_regularization::Real)
     m = Model()
 
     nξ = size(wdm.ξ[t],1)
@@ -59,7 +60,7 @@ function dual_bellman_operator(wdm::WaterDamModel, t::Int)
     @expression(m, xₜ, [lₜ])
     @expression(m, xₜ₊₁[i=1:nξ], [lₜ₊₁[i]])
     
-    md = auto_dual_bellman_operator(m, wdm.πξ[t], 1.)
+    md = auto_dual_bellman_operator(m, wdm.πξ[t], l1_regularization)
     set_optimizer(md, optimizer_with_attributes(Clp.Optimizer, "LogLevel" => 0))
 
     return md
