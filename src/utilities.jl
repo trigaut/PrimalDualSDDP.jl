@@ -36,7 +36,7 @@ function export_lbo_to_scipylp(m::JuMP.Model)
     x_ub = ub[1:nvars]
     indices_xₜ = [x.index.value for x in m[:xₜ]]
 
-    indices_uₜ = [u.index.value for u in m[:uₜ₊₁]]
+    indices_uₜ = [u.index.value for u in m[:uₜ]]
 
     # parse objective function to compute vector c such as std_obj = c'x
     objective_expr = objective_function(m)
