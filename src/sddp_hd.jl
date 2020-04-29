@@ -101,7 +101,8 @@ function primalsddp!(hdm::HazardDecisionModel,
                      V::Array{PolyhedralFunction}, 
                      n_pass::Int, 
                      x₀s::Array;
-                     nprune = n_pass)
+                     nprune::Int = n_pass,
+                     prunetol::Real = 0.)
     println("** Primal SDDP, in Hazard Decision , with $(n_pass) passes and $(div(n_pass,nprune)) pruning  **")
     T, S = size(hdm.ξs)
     m = [bellman_operator(hdm, t) for t in 1:T]
@@ -120,11 +121,12 @@ function primalsddp!(hdm::HazardDecisionModel,
             V[1] = unique(V[1])
             for (t, Vₜ₊₁) in enumerate(V[2:end])
                 V[t+1] = unique(Vₜ₊₁)
+                exact_pruning!(V[t+1], ϵ = prunetol)
                 m[t] = bellman_operator(hdm, t)
                 initialize_lift_primal!(m[t], hdm, t, V[t+1])
             end
         end
     end
+    exact_pruning!(V[1], ϵ = prunetol)
     return m
 end
-

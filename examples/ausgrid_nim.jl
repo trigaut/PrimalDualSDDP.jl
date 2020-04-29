@@ -5,7 +5,7 @@ using Revise
 using PrimalDualSDDP
 
 #const train_data = EnergyDataset.load_customer_train_data(80);
-const train_data = load("ausgrid_train_80.jld")["data"]
+const train_data = load(joinpath(@__DIR__,"ausgrid_train_80.jld"))["data"]
 const T = size(train_data,1)
 const Δt = 24/T
 const S = size(train_data,2)

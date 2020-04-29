@@ -27,18 +27,18 @@ end
 function bellman_operator(wdm::WaterDamModel, t::Int)
     m = Model(optimizer_with_attributes(Clp.Optimizer, "LogLevel" => 0))
 
-    @variable(m, 0 <= lₜ <= wdm.capacity)
-    @variable(m, 0 <= lₜ₊₁ <= wdm.capacity)
-    @variable(m, rₜ₊₁)
+    @variable(m, 0 <= l1 <= wdm.capacity)
+    @variable(m, 0 <= l2 <= wdm.capacity)
+    @variable(m, r2)
     @variable(m, 0 <= u <= wdm.umax)
     @variable(m, s >= 0)
-    @constraint(m, lₜ₊₁ == lₜ - u .+ rₜ₊₁ - s)
+    @constraint(m, l2 == l1 - u .+ r2 - s)
     @objective(m, Min, -wdm.csell[t]*u)
 
-    @expression(m, xₜ, [lₜ])
+    @expression(m, xₜ, [l1])
     @expression(m, uₜ₊₁, [u, s])
-    @expression(m, xₜ₊₁, [lₜ₊₁])
-    @expression(m, ξₜ₊₁, [rₜ₊₁])
+    @expression(m, xₜ₊₁, [l2])
+    @expression(m, ξₜ₊₁, [r2])
 
     return m
 end

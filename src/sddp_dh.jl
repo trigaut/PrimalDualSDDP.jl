@@ -96,7 +96,8 @@ function primalsddp!(dhm::DecisionHazardModel,
                      V::Array{PolyhedralFunction}, 
                      n_pass::Int, 
                      x₀s::Array;
-                     nprune = n_pass)
+                     nprune::Int = n_pass,
+                     prunetol::Real = 0.)
     println("** Primal SDDP with $(n_pass) passes, $(div(n_pass,nprune)) pruning  **")
     T, S = size(dhm.ξs)
     m = [bellman_operator(dhm, t) for t in 1:T]
@@ -115,10 +116,12 @@ function primalsddp!(dhm::DecisionHazardModel,
             V[1] = unique(V[1])
             for (t, Vₜ₊₁) in enumerate(V[2:end])
                 V[t+1] = unique(Vₜ₊₁)
+                exact_pruning!(V[t+1], ϵ = prunetol)
                 m[t] = bellman_operator(dhm, t)
                 initialize_lift_primal!(m[t], dhm, t, V[t+1])
             end
         end
     end
+    exact_pruning!(V[1], ϵ = prunetol)
     return m
 end

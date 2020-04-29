@@ -5,7 +5,7 @@ using Revise
 using PrimalDualSDDP
 
 #const train_data = EnergyDataset.load_customer_train_data(80);
-const train_data = load("ausgrid_train_80.jld")["data"]
+const train_data = load(joinpath(@__DIR__,"ausgrid_train_80.jld"))["data"]
 const T = size(train_data,1)
 const Δt = 24/T
 const S = size(train_data,2)
@@ -40,7 +40,7 @@ const V = [PrimalDualSDDP.PolyhedralFunction([0. 0.], [-100.]) for t in 1:T]
 push!(V, PrimalDualSDDP.PolyhedralFunction([-offpeak 0.], [0.]))
     
 x₀s = collect(Base.product([0., 10.], [5., 10., 20.]))
-const m = PrimalDualSDDP.primalsddp!(nim, V, 50, x₀s)
+const m = PrimalDualSDDP.primalsddp!(nim, V, 50, x₀s, nprune = 10)
 
 #const l1_regularization = maximum(PrimalDualSDDP.lipschitz_constant.(V))
 const l1_regularization = 162
@@ -49,7 +49,7 @@ const l1_regularization = 162
 const D = [PrimalDualSDDP.PolyhedralFunction([0. 0.], [-1e10]) for t in 1:T]
 push!(D, PrimalDualSDDP.δ([-offpeak, 0.], 1e3))
 const md = PrimalDualSDDP.dualsddp!(nim, D, 100, λ₀s, 
-                                    nprune = 50, 
+                                    nprune = 25, 
                                     l1_regularization = l1_regularization)
 
 
