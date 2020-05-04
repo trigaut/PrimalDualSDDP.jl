@@ -1,6 +1,6 @@
 using JuMP, PrimalDualSDDP, Clp
 
-mutable struct WaterDamModel <: PrimalDualSDDP.HazardDecisionModel
+mutable struct WaterDamModel <: HazardDecisionModel
     Δt::Float64
     capacity::Float64
     umax::Float64
@@ -26,7 +26,7 @@ function WaterDamModel(Δt::Float64, capacity::Float64,
                          ξ, πξ, rainfall_scenarios[:,:,:], fₜ)
 end
 
-function bellman_operator(wdm::WaterDamModel, t::Int)
+function PrimalDualSDDP.bellman_operator(wdm::WaterDamModel, t::Int)
     m = Model(optimizer_with_attributes(Clp.Optimizer, "LogLevel" => 0))
 
     @variable(m, 0 <= l1 <= wdm.capacity)
@@ -45,8 +45,8 @@ function bellman_operator(wdm::WaterDamModel, t::Int)
     return m
 end
 
-function dual_bellman_operator(wdm::WaterDamModel, t::Int, 
-                              l1_regularization::Real)
+function PrimalDualSDDP.dual_bellman_operator(wdm::WaterDamModel, t::Int, 
+                                              l1_regularization::Real)
     m = Model()
 
     nξ = size(wdm.ξ[t],1)

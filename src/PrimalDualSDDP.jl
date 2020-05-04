@@ -4,7 +4,13 @@ using JuMP, Clp, Dualization, CutPruners
 using LinearAlgebra, Statistics, MultivariateStats, Clustering 
 using ProgressMeter
 
+export HazardDecisionModel, DecisionHazardModel, PolyhedralFunction
+
 abstract type LinearBellmanModel end
+
+function bellman_operator end
+
+function dual_bellman_operator end
 
 include("statistics.jl")
 include("utilities.jl")

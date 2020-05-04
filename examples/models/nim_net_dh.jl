@@ -50,7 +50,7 @@ function NonIslandedNetModel(Δt::Float64, capacity::Float64,
                      α, β, ξ, πξ, ξs[:,:,:], fₜ)
 end
 
-function bellman_operator(nim::NonIslandedNetModel, t::Int)
+function PrimalDualSDDP.bellman_operator(nim::NonIslandedNetModel, t::Int)
 
     m = JuMP.Model(optimizer_with_attributes(Clp.Optimizer, "LogLevel" => 0))
     ξ = nim.ξ[t]
@@ -91,9 +91,9 @@ function bellman_operator(nim::NonIslandedNetModel, t::Int)
     return m
 end
 
-function dual_bellman_operator(nim::NonIslandedNetModel, 
-                               t::Int,
-                               l1_regularization::Real)
+function PrimalDualSDDP.dual_bellman_operator(nim::NonIslandedNetModel, 
+                                              t::Int,
+                                              l1_regularization::Real)
     md = PrimalDualSDDP.auto_dual_bellman_operator(nim, t, l1_regularization)
     set_optimizer(md, optimizer_with_attributes(Clp.Optimizer, "LogLevel" => 0))
 
