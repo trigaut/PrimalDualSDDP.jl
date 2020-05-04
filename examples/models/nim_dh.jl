@@ -1,6 +1,7 @@
 # nim stands for Non Islanded Model
+using JuMP, PrimalDualSDDP, Clp
 
-mutable struct NonIslandedModel <: DecisionHazardModel
+mutable struct NonIslandedModel <: PrimalDualSDDP.DecisionHazardModel
     Δt::Float64
     capacity::Float64
     ρc::Float64
@@ -25,8 +26,8 @@ function NonIslandedModel(Δt::Float64, capacity::Float64,
                           cbuy::Vector{Float64}, csell::Vector{Float64}, 
                           scenarios::Array{Float64,3}, bins::Int)
     
-    αd = fitar_ridge_reg(scenarios[:,:,1])
-    αp = fitar_ridge_reg(scenarios[:,:,2])
+    αd = PrimalDualSDDP.fitar_ridge_reg(scenarios[:,:,1])
+    αp = PrimalDualSDDP.fitar_ridge_reg(scenarios[:,:,2])
     
     ξsd = scenarios[2:end,:,1] .- αd .* scenarios[1:end-1,:,1]
     ξsp = scenarios[2:end,:,2] .- αp .* scenarios[1:end-1,:,2]
@@ -40,7 +41,7 @@ function NonIslandedModel(Δt::Float64, capacity::Float64,
     α = cat(αd[:,:], αp[:,:], dims =2)
     ξs = cat(ξsd[:,:,:], ξsp[:,:,:], dims = 3)
 
-    ξ, πξ = discrete_white_noise(ξs, bins);
+    ξ, πξ = PrimalDualSDDP.discrete_white_noise(ξs, bins);
 
     function fₜ(t, xₜ, uₜ, ξₜ₊₁)
         xₜ₊₁ = [xₜ[1] + ρc*uₜ[1] - 1/ρd*uₜ[2],
@@ -101,7 +102,7 @@ end
 function dual_bellman_operator(nim::NonIslandedModel, 
                                t::Int,
                                l1_regularization::Real)
-    md = auto_dual_bellman_operator(nim, t, l1_regularization)
+    md = PrimalDualSDDP.auto_dual_bellman_operator(nim, t, l1_regularization)
     set_optimizer(md, optimizer_with_attributes(Clp.Optimizer, "LogLevel" => 0))
 
     md

@@ -1,6 +1,7 @@
 # nim stands for Non Islanded Model
+using JuMP, PrimalDualSDDP, Clp
 
-mutable struct NonIslandedNetModel <: DecisionHazardModel
+mutable struct NonIslandedNetModel <: PrimalDualSDDP.DecisionHazardModel
     Δt::Float64
     capacity::Float64
     ρc::Float64
@@ -26,7 +27,7 @@ function NonIslandedNetModel(Δt::Float64, capacity::Float64,
                           cbuy::Vector{Float64}, csell::Vector{Float64}, 
                           net_d_scenarios::Array{Float64,2}, bins::Int)
     
-    α1, β1, _ = fitar_cholesky(net_d_scenarios)
+    α1, β1, _ = PrimalDualSDDP.fitar_cholesky(net_d_scenarios)
     
     ξs1 = net_d_scenarios[2:end,:] .- α1 .* net_d_scenarios[1:end-1,:] .- β1
 
@@ -34,7 +35,7 @@ function NonIslandedNetModel(Δt::Float64, capacity::Float64,
     β = cat([0.], β1, dims = 1)
     ξs = cat(net_d_scenarios[1:1,:], ξs1, dims = 1)
 
-    ξ, πξ = discrete_white_noise(ξs, bins);
+    ξ, πξ = PrimalDualSDDP.discrete_white_noise(ξs, bins);
 
     function fₜ(t, xₜ, uₜ, ξₜ₊₁)
         xₜ₊₁ = [xₜ[1] + ρc*uₜ[1] - 1/ρd*uₜ[2],
@@ -93,7 +94,7 @@ end
 function dual_bellman_operator(nim::NonIslandedNetModel, 
                                t::Int,
                                l1_regularization::Real)
-    md = auto_dual_bellman_operator(nim, t, l1_regularization)
+    md = PrimalDualSDDP.auto_dual_bellman_operator(nim, t, l1_regularization)
     set_optimizer(md, optimizer_with_attributes(Clp.Optimizer, "LogLevel" => 0))
 
     md

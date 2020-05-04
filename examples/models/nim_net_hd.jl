@@ -1,6 +1,7 @@
 # nim stands for Non Islanded Model
+using JuMP, PrimalDualSDDP, Clp
 
-mutable struct NonIslandedNetHDModel <: HazardDecisionModel
+mutable struct NonIslandedNetHDModel <: PrimalDualSDDP.HazardDecisionModel
     Δt::Float64
     capacity::Float64
     ρc::Float64
@@ -24,7 +25,7 @@ function NonIslandedNetHDModel(Δt::Float64, capacity::Float64,
                           cbuy::Vector{Float64}, csell::Vector{Float64}, 
                           net_d_scenarios::Array{Float64,2}, bins::Int)
     ξs = net_d_scenarios    
-    ξ, πξ = discrete_white_noise(ξs, bins);
+    ξ, πξ = PrimalDualSDDP.discrete_white_noise(ξs, bins);
 
     function fₜ(t, xₜ, uₜ, ξₜ₊₁)
         xₜ₊₁ = [xₜ[1] + ρc*uₜ[1] - 1/ρd*uₜ[2],
@@ -106,7 +107,7 @@ function dual_bellman_operator(nim::NonIslandedNetHDModel,
     @expression(m, xₜ, [socₜ, hₜ])
     @expression(m, xₜ₊₁[i=1:nξ], [socₜ₊₁[i], hₜ₊₁[i]])
 
-    md = auto_dual_bellman_operator(m, nim.πξ[t], l1_regularization)
+    md = PrimalDualSDDP.auto_dual_bellman_operator(m, nim.πξ[t], l1_regularization)
     set_optimizer(md, optimizer_with_attributes(Clp.Optimizer, "LogLevel" => 0))
 
     md

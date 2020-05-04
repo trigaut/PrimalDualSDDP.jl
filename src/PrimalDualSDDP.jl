@@ -1,6 +1,6 @@
 module PrimalDualSDDP
 
-using JuMP, Clp, Dualization, CutPruners, CPLEX
+using JuMP, Clp, Dualization, CutPruners
 using LinearAlgebra, Statistics, MultivariateStats, Clustering 
 using ProgressMeter
 
@@ -13,10 +13,5 @@ include("sddp_dh.jl")
 include("sddp_hd.jl")
 include("dual_sddp.jl")
 include("dualization.jl")
-
-include("models/nim_dh.jl")
-include("models/nim_net_dh.jl")
-include("models/nim_net_hd.jl")
-include("models/water_dam_hd.jl")
 
 end # module

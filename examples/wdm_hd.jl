@@ -1,8 +1,6 @@
+include(joinpath(@__DIR__,"models", "water_dam_hd.jl"))
+
 using Random
-
-using Revise
-
-using PrimalDualSDDP
 
 const T = 24
 const S = 365
@@ -15,10 +13,10 @@ Random.seed!(1234)
 const csell = rand(T)
 const rain_scenarios = 1.2*cap .* rand(T,S)
 
-const wdm = PrimalDualSDDP.WaterDamModel(Δt, cap, 
-                                         umax, csell, 
-                                         rain_scenarios, 
-                                         bins)
+const wdm = WaterDamModel(Δt, cap, 
+                         umax, csell, 
+                         rain_scenarios, 
+                         bins)
 
 
 const V = [PrimalDualSDDP.PolyhedralFunction([0.]', [-1e4]) for t in 1:T]

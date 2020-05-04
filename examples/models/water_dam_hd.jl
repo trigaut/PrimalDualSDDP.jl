@@ -1,4 +1,6 @@
-mutable struct WaterDamModel <: HazardDecisionModel
+using JuMP, PrimalDualSDDP, Clp
+
+mutable struct WaterDamModel <: PrimalDualSDDP.HazardDecisionModel
     Δt::Float64
     capacity::Float64
     umax::Float64
@@ -14,7 +16,7 @@ function WaterDamModel(Δt::Float64, capacity::Float64,
                        rainfall_scenarios::Array{Float64,2}, 
                        bins::Int)
     
-    ξ, πξ = discrete_white_noise(rainfall_scenarios, bins)
+    ξ, πξ = PrimalDualSDDP.discrete_white_noise(rainfall_scenarios, bins)
 
     function fₜ(t, xₜ, uₜ₊₁, ξₜ₊₁)
         return [xₜ[1] - uₜ₊₁[1] + ξₜ₊₁[1] - uₜ₊₁[2]]
@@ -60,7 +62,7 @@ function dual_bellman_operator(wdm::WaterDamModel, t::Int,
     @expression(m, xₜ, [lₜ])
     @expression(m, xₜ₊₁[i=1:nξ], [lₜ₊₁[i]])
     
-    md = auto_dual_bellman_operator(m, wdm.πξ[t], l1_regularization)
+    md = PrimalDualSDDP.auto_dual_bellman_operator(m, wdm.πξ[t], l1_regularization)
     set_optimizer(md, optimizer_with_attributes(Clp.Optimizer, "LogLevel" => 0))
 
     return md
