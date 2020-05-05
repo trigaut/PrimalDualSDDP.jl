@@ -1,10 +1,9 @@
-abstract type DecisionHazardModel<: LinearBellmanModel end
+abstract type DecisionHazardModel <: LinearBellmanModel end
 
 function initialize_lift_primal!(m::JuMP.Model,
                                  dhm::DecisionHazardModel,
                                  t::Int,
                                  Vₜ₊₁::PolyhedralFunction)
-    
     nξ = length(m[:xₜ₊₁])
     @variable(m, θ[1:nξ])
     for (λ, γ) in eachcut(Vₜ₊₁)
@@ -18,7 +17,7 @@ function initialize_lift_primal!(m::JuMP.Model,
 end
 
 function primalsolve!(::DecisionHazardModel,
-                       m::JuMP.Model, 
+                       m::JuMP.Model,
                        xₜ::Vector{Float64})
     fix.(m[:xₜ], xₜ, force=true)
     optimize!(m)
@@ -26,9 +25,9 @@ function primalsolve!(::DecisionHazardModel,
     return
 end
 
-function new_cut!(dhm::DecisionHazardModel, 
-                  Vₜ::PolyhedralFunction, 
-                  m::JuMP.Model, 
+function new_cut!(dhm::DecisionHazardModel,
+                  Vₜ::PolyhedralFunction,
+                  m::JuMP.Model,
                   xₜ::Vector{Float64})
     primalsolve!(dhm, m, xₜ)
     λ = dual.(FixRef.(m[:xₜ]))
@@ -38,8 +37,8 @@ function new_cut!(dhm::DecisionHazardModel,
     return
 end
 
-function update!(dhm::DecisionHazardModel, 
-                 mₜ::JuMP.Model, 
+function update!(dhm::DecisionHazardModel,
+                 mₜ::JuMP.Model,
                  Vₜ₊₁::PolyhedralFunction)
     nξ = length(mₜ[:θ])
     for i in 1:nξ
@@ -48,22 +47,22 @@ function update!(dhm::DecisionHazardModel,
     return
 end
 
-function control!(dhm::DecisionHazardModel, 
-                  m::JuMP.Model, 
+function control!(dhm::DecisionHazardModel,
+                  m::JuMP.Model,
                   xₜ::Vector{Float64})
     primalsolve!(dhm, m, xₜ)
     return value.(m[:uₜ])
 end
 
 function forward_pass(dhm::DecisionHazardModel,
-                      m::Vector{JuMP.Model}, 
+                      m::Vector{JuMP.Model},
                       ξscenarios::Array{Float64, 3},
                       x₀::Vector{Float64})
     T = size(ξscenarios,1)
     n_pass = size(ξscenarios,2)
     xscenarios = fill(0., T+1, n_pass, length(x₀))
-    for pass in 1:n_pass
-        xₜ = x₀ 
+    @inbounds for pass in 1:n_pass
+        xₜ = x₀
         xscenarios[1,pass,:] .= x₀
         for (t, ξₜ₊₁) in enumerate(eachrow(ξscenarios[:,pass,:]))
             uₜ = control!(dhm, m[t], xₜ)
@@ -83,29 +82,38 @@ function backward_pass!(dhm::DecisionHazardModel,
     for pass in 1:n_pass
         new_cut!(dhm, V[T], m[T], xscenarios[T,pass,:])
     end
-    for t in T:-1:1
+    @inbounds for t in T:-1:1
         update!(dhm, m[t], V[t+1])
         for pass in 1:n_pass
             new_cut!(dhm, V[t], m[t], xscenarios[t,pass,:])
         end
     end
-    return 
+    return
 end
 
-function primalsddp!(dhm::DecisionHazardModel, 
-                     V::Array{PolyhedralFunction}, 
-                     n_pass::Int, 
+function primalsddp!(dhm::DecisionHazardModel,
+                     V::Array{PolyhedralFunction},
+                     n_pass::Int,
                      x₀s::Array;
                      nprune::Int = n_pass,
+                     solver_pruning=nothing,
                      prunetol::Real = 0.)
-    println("** Primal SDDP with $(n_pass) passes, $(div(n_pass,nprune)) pruning  **")
+
+    n_pruning = div(n_pass, nprune)
+    println("** Primal SDDP with $(n_pass) passes, $(n_pruning) pruning  **")
+    if n_pruning > 0 && isnothing(solver_pruning)
+        error("Could not proceed to pruning as `solver_pruning` is not set.")
+    end
+
     T, S = size(dhm.ξs)
     m = [bellman_operator(dhm, t) for t in 1:T]
     for (t, Vₜ₊₁) in enumerate(V[2:end])
         initialize_lift_primal!(m[t], dhm, t, Vₜ₊₁)
     end
+
     println("Primal Bellman JuMP Models initialized")
-    println("Now running sddp passes")
+    println("Now running SDDP passes")
+
     @showprogress for i in 1:n_pass
         ξscenarios = dhm.ξs[:,rand(1:S,1),:]
         x₀ = [rand(x₀s)...]
@@ -116,12 +124,12 @@ function primalsddp!(dhm::DecisionHazardModel,
             V[1] = unique(V[1])
             for (t, Vₜ₊₁) in enumerate(V[2:end])
                 V[t+1] = unique(Vₜ₊₁)
-                exact_pruning!(V[t+1], ϵ = prunetol)
+                exact_pruning!(V[t+1], solver_pruning, ϵ = prunetol)
                 m[t] = bellman_operator(dhm, t)
                 initialize_lift_primal!(m[t], dhm, t, V[t+1])
             end
         end
     end
-    exact_pruning!(V[1], ϵ = prunetol)
+    exact_pruning!(V[1], solver_pruning, ϵ = prunetol)
     return m
 end

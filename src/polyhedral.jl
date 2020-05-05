@@ -25,11 +25,11 @@ function PolyhedralFenchelTransform(V::PolyhedralFunction)
 end
 
 function (V::PolyhedralFunction)(x::Array{Float64,1})
-        return maximum(V.λ*x .+ V.γ)
+    return maximum(V.λ*x .+ V.γ)
 end
 
-function (D::PolyhedralFenchelTransform)(x::Array{Float64,1})
-    return fenchel_transform_as_sup(D.V, x, D.l1_regularization)
+function (D::PolyhedralFenchelTransform)(x::Array{Float64,1}, optimizer_constructor)
+    return fenchel_transform_as_sup(D.V, optimizer_constructor, x, D.l1_regularization)
 end
 
 function Base.unique(V::PolyhedralFunction)
@@ -49,14 +49,13 @@ function add_cut!(V, λ, γ)
 end
 
 function remove_cut!(V::PolyhedralFunction, cut_index::Int)
-    V.λ = V.λ[(1:cut_index-1)∪(cut_index+1:end),:] 
+    V.λ = V.λ[(1:cut_index-1)∪(cut_index+1:end),:]
     V.γ = V.γ[(1:cut_index-1)∪(cut_index+1:end)]
     return
 end
 
-
 function remove_cut(V::PolyhedralFunction, cut_index::Int)
-    return PolyhedralFunction(V.λ[(1:cut_index-1)∪(cut_index+1:end),:], 
+    return PolyhedralFunction(V.λ[(1:cut_index-1)∪(cut_index+1:end),:],
                               V.γ[(1:cut_index-1)∪(cut_index+1:end)])
 end
 
@@ -70,10 +69,11 @@ function δ(point::Vector{Float64}, reg::Float64)
     return V
 end
 
-function fenchel_transform_as_sup(D::PolyhedralFunction, 
-                                  x::Array{Float64, 1}, 
+function fenchel_transform_as_sup(D::PolyhedralFunction,
+                                  optimizer_constructor,
+                                  x::Array{Float64, 1},
                                   lip::Real)
-    m = Model(optimizer_with_attributes(Clp.Optimizer, "LogLevel" => 0))
+    m = Model(optimizer_constructor)
     nx = size(D.λ, 2)
     @variable(m, -lip <= λ[1:nx] <= lip)
     @variable(m, θ)
@@ -85,10 +85,11 @@ function fenchel_transform_as_sup(D::PolyhedralFunction,
     return objective_value(m)
 end
 
-function fenchel_transform_as_inf(D::PolyhedralFunction, 
-                                  x::Array{Float64, 1}, 
+function fenchel_transform_as_inf(D::PolyhedralFunction,
+                                  optimizer_constructor,
+                                  x::Array{Float64, 1},
                                   lip::Real)
-    m = Model(optimizer_with_attributes(Clp.Optimizer, "LogLevel" => 0))
+    m = Model(optimizer_constructor)
     nc, nx = size(D.λ)
     @variable(m, σ[1:nc] >= 0)
     @constraint(m, sum(σ) == 1)
@@ -102,8 +103,8 @@ function fenchel_transform_as_inf(D::PolyhedralFunction,
     return objective_value(m)
 end
 
-function exact_pruning!(V::PolyhedralFunction; 
-                        lb = -Inf, 
+function exact_pruning!(V::PolyhedralFunction, optimizer_constructor;
+                        lb = -Inf,
                         ub = Inf,
                         ϵ::Real = 0.,
                         round_precision::Real = 1e-6)
@@ -111,14 +112,10 @@ function exact_pruning!(V::PolyhedralFunction;
     V.γ .= round.(V.γ ./ round_precision)*round_precision
     islb = true # max of cuts
     isfun = true # max of cuts
-    optimizer_constructor = optimizer_with_attributes(Clp.Optimizer, 
-                                                      "LogLevel" => 0)
-    # optimizer_constructor = optimizer_with_attributes(CPLEX.Optimizer, 
-    #                                                   "CPX_PARAM_SCRIND" => 0)
 
-    dominated_cuts = CutPruners.getdominated(V.λ, V.γ, islb, isfun, 
-                                             optimizer_constructor, 
-                                             lb, ub, ϵ)
+    dominated_cuts = CutPruners.getdominated(V.λ, V.γ, islb, isfun,
+                                             optimizer_constructor,
+                                             lb, ub, 1e-8)
 
     for cut_index in reverse(dominated_cuts)
         remove_cut!(V, cut_index)
@@ -126,8 +123,8 @@ function exact_pruning!(V::PolyhedralFunction;
     return
 end
 
-function exact_pruning(V::PolyhedralFunction; 
-                       lb = -Inf, 
+function exact_pruning(V::PolyhedralFunction, optimizer_constructor;
+                       lb = -Inf,
                        ub = Inf,
                        ϵ::Real = 0.,
                        round_precision::Real = 1e-10)
@@ -136,12 +133,10 @@ function exact_pruning(V::PolyhedralFunction;
     V1.γ .= round.(V1.γ ./ round_precision)*round_precision
     islb = true # max of cuts
     isfun = true # max of cuts
-    optimizer_constructor = optimizer_with_attributes(Clp.Optimizer, 
-                                                      "LogLevel" => 0)
 
-    dominated_cuts = CutPruners.getdominated(V1.λ, V1.γ, islb, isfun, 
-                                             optimizer_constructor, 
-                                             lb, ub, ϵ)
+    dominated_cuts = CutPruners.getdominated(V1.λ, V1.γ, islb, isfun,
+                                             optimizer_constructor,
+                                             lb, ub, 1e-8)
 
     for cut_index in reverse(dominated_cuts)
         remove_cut!(V1, cut_index)

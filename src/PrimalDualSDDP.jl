@@ -1,7 +1,7 @@
 module PrimalDualSDDP
 
-using JuMP, Clp, Dualization, CutPruners
-using LinearAlgebra, Statistics, MultivariateStats, Clustering 
+using JuMP, Dualization, CutPruners
+using LinearAlgebra, Statistics, MultivariateStats, Clustering
 using ProgressMeter
 
 export HazardDecisionModel, DecisionHazardModel, PolyhedralFunction

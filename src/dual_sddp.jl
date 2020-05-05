@@ -15,7 +15,7 @@ function initialize_lift_dual!(m::JuMP.Model,
 end
 
 function dualsolve!(::LinearBellmanModel,
-                    m::JuMP.Model, 
+                    m::JuMP.Model,
                     μₜ::Vector{Float64})
     fix.(m[:μₜ], μₜ, force=true)
     optimize!(m)
@@ -23,9 +23,9 @@ function dualsolve!(::LinearBellmanModel,
     return
 end
 
-function dual_new_cut!(lbm::LinearBellmanModel, 
-                       Dₜ::PolyhedralFunction, 
-                       m::JuMP.Model, 
+function dual_new_cut!(lbm::LinearBellmanModel,
+                       Dₜ::PolyhedralFunction,
+                       m::JuMP.Model,
                        μₜ::Vector{Float64})
     dualsolve!(lbm, m, μₜ)
     λ = dual.(FixRef.(m[:μₜ]))
@@ -36,8 +36,8 @@ function dual_new_cut!(lbm::LinearBellmanModel,
 end
 
 
-function dualupdate!(lbm::LinearBellmanModel, 
-                     mₜ::JuMP.Model, 
+function dualupdate!(lbm::LinearBellmanModel,
+                     mₜ::JuMP.Model,
                      Dₜ₊₁::PolyhedralFunction)
     nξ = length(mₜ[:θ])
     for i in 1:nξ
@@ -46,8 +46,8 @@ function dualupdate!(lbm::LinearBellmanModel,
     return
 end
 
-function dualstate!(lbm::LinearBellmanModel, 
-                    m::JuMP.Model, 
+function dualstate!(lbm::LinearBellmanModel,
+                    m::JuMP.Model,
                     μₜ::Vector{Float64})
     dualsolve!(lbm, m, μₜ)
     return map(μ♯ -> value.(μ♯), m[:μₜ₊₁])
@@ -55,14 +55,14 @@ end
 
 
 function dual_forward_pass(lbm::LinearBellmanModel,
-                           m::Vector{JuMP.Model}, 
+                           m::Vector{JuMP.Model},
                            ξscenarios::Array{Float64, 3},
                            μ₀::Vector{Float64})
     T = size(ξscenarios,1)
     n_pass = size(ξscenarios,2)
     μscenarios = fill(0., T+1, n_pass, length(μ₀))
     for pass in 1:n_pass
-        μₜ = μ₀ 
+        μₜ = μ₀
         μscenarios[1,pass,:] .= μ₀
         for (t, ξₜ₊₁) in enumerate(eachrow(ξscenarios[:,pass,:]))
             μₜ₊₁ = dualstate!(lbm, m[t], μₜ)
@@ -89,24 +89,33 @@ function dual_backward_pass!(lbm::LinearBellmanModel,
             dual_new_cut!(lbm, D[t], m[t], μscenarios[t,pass,:])
         end
     end
-    return 
+    return
 end
 
-function dualsddp!(lbm::LinearBellmanModel, 
-                    D::Array{PolyhedralFunction}, 
-                    n_pass::Int, 
-                    μ₀s::Array;
-                    nprune::Int = n_pass,
-                    prunetol::Real = 0.,
-                    l1_regularization::Real = 1e6)
-    println("** Dual SDDP with $(n_pass) passes, $(div(n_pass,nprune)) pruning  **")
+function dualsddp!(lbm::LinearBellmanModel,
+                   D::Array{PolyhedralFunction},
+                   n_pass::Int,
+                   μ₀s::Array;
+                   nprune::Int = n_pass,
+                   solver_pruning=nothing,
+                   prunetol::Real = 0.,
+                   l1_regularization::Real = 1e6)
+    n_pruning = div(n_pass, nprune)
+
+    println("** Dual SDDP with $(n_pass) passes, $(n_pruning) pruning  **")
+    if n_pruning > 0 && isnothing(solver_pruning)
+        error("Could not proceed to pruning as `solver_pruning` is not set.")
+    end
+
     T, S = size(lbm.ξs)
     m = [dual_bellman_operator(lbm, t, l1_regularization) for t in 1:T]
     for (t, Dₜ₊₁) in enumerate(D[2:end])
         initialize_lift_dual!(m[t], lbm, t, Dₜ₊₁)
     end
+
     println("Dual Bellman JuMP Models initialized")
-    println("Now running sddp passes")
+    println("Now running SDDP passes")
+
     @showprogress for i in 1:n_pass
         ξscenarios = lbm.ξs[:,rand(1:S,1),:]
         μ₀ = [rand(μ₀s)...]
@@ -117,12 +126,12 @@ function dualsddp!(lbm::LinearBellmanModel,
             D[1] = unique(D[1])
             for (t, Dₜ₊₁) in enumerate(D[2:end])
                 D[t+1] = unique(Dₜ₊₁)
-                exact_pruning!(D[t+1], ϵ = prunetol)
+                exact_pruning!(D[t+1], solver_pruning, ϵ = prunetol)
                 m[t] = dual_bellman_operator(lbm, t, l1_regularization)
                 initialize_lift_dual!(m[t], lbm, t, D[t+1])
             end
         end
     end
-    exact_pruning!(D[1], ϵ = prunetol)
+    exact_pruning!(D[1], solver_pruning, ϵ = prunetol)
     return m
 end
