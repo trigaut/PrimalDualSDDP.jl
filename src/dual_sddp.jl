@@ -35,7 +35,6 @@ function dual_new_cut!(lbm::LinearBellmanModel,
     return
 end
 
-
 function dualupdate!(lbm::LinearBellmanModel,
                      mₜ::JuMP.Model,
                      Dₜ₊₁::PolyhedralFunction)
@@ -53,7 +52,6 @@ function dualstate!(lbm::LinearBellmanModel,
     return map(μ♯ -> value.(μ♯), m[:μₜ₊₁])
 end
 
-
 function dual_forward_pass(lbm::LinearBellmanModel,
                            m::Vector{JuMP.Model},
                            ξscenarios::Array{Float64, 3},
@@ -61,18 +59,17 @@ function dual_forward_pass(lbm::LinearBellmanModel,
     T = size(ξscenarios,1)
     n_pass = size(ξscenarios,2)
     μscenarios = fill(0., T+1, n_pass, length(μ₀))
-    for pass in 1:n_pass
+    @inbounds for pass in 1:n_pass
         μₜ = μ₀
-        μscenarios[1,pass,:] .= μ₀
-        for (t, ξₜ₊₁) in enumerate(eachrow(ξscenarios[:,pass,:]))
+        μscenarios[1, pass, :] .= μ₀
+        for (t, ξₜ₊₁) in enumerate(eachrow(ξscenarios[:, pass, :]))
             μₜ₊₁ = dualstate!(lbm, m[t], μₜ)
-            μscenarios[t+1,pass,:] .= rand(μₜ₊₁)
-            μₜ = μscenarios[t+1,pass,:]
+            μscenarios[t+1, pass,:] .= rand(μₜ₊₁)
+            μₜ = μscenarios[t+1, pass, :]
         end
     end
     return μscenarios
 end
-
 
 function dual_backward_pass!(lbm::LinearBellmanModel,
                              m::Vector{JuMP.Model},
@@ -83,7 +80,7 @@ function dual_backward_pass!(lbm::LinearBellmanModel,
     for pass in 1:n_pass
         dual_new_cut!(lbm, D[T], m[T], μscenarios[T,pass,:])
     end
-    for t in T:-1:1
+    @inbounds for t in T:-1:1
         dualupdate!(lbm, m[t], D[t+1])
         for pass in 1:n_pass
             dual_new_cut!(lbm, D[t], m[t], μscenarios[t,pass,:])
