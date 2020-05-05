@@ -1,5 +1,9 @@
 using JuMP, PrimalDualSDDP, Clp
 
+SOLVER = optimizer_with_attributes(Clp.Optimizer, "LogLevel" => 0)
+#= SOLVER = optimizer_with_attributes(Xpress.Optimizer, MOI.Silent() => true, =#
+#=                                    "DEFAULTALG" => 2) =#
+
 mutable struct WaterDamModel <: HazardDecisionModel
     Δt::Float64
     capacity::Float64
@@ -11,23 +15,23 @@ mutable struct WaterDamModel <: HazardDecisionModel
     fₜ
 end
 
-function WaterDamModel(Δt::Float64, capacity::Float64, 
-                       umax::Float64, csell::Vector{Float64}, 
-                       rainfall_scenarios::Array{Float64,2}, 
+function WaterDamModel(Δt::Float64, capacity::Float64,
+                       umax::Float64, csell::Vector{Float64},
+                       rainfall_scenarios::Array{Float64,2},
                        bins::Int)
-    
+
     ξ, πξ = PrimalDualSDDP.discrete_white_noise(rainfall_scenarios, bins)
 
     function fₜ(t, xₜ, uₜ₊₁, ξₜ₊₁)
         return [xₜ[1] - uₜ₊₁[1] + ξₜ₊₁[1] - uₜ₊₁[2]]
     end
 
-    return WaterDamModel(Δt, capacity, umax, csell, 
+    return WaterDamModel(Δt, capacity, umax, csell,
                          ξ, πξ, rainfall_scenarios[:,:,:], fₜ)
 end
 
 function PrimalDualSDDP.bellman_operator(wdm::WaterDamModel, t::Int)
-    m = Model(optimizer_with_attributes(Clp.Optimizer, "LogLevel" => 0))
+    m = Model(SOLVER)
 
     @variable(m, 0 <= l1 <= wdm.capacity)
     @variable(m, 0 <= l2 <= wdm.capacity)
@@ -45,15 +49,14 @@ function PrimalDualSDDP.bellman_operator(wdm::WaterDamModel, t::Int)
     return m
 end
 
-function PrimalDualSDDP.dual_bellman_operator(wdm::WaterDamModel, t::Int, 
+function PrimalDualSDDP.dual_bellman_operator(wdm::WaterDamModel, t::Int,
                                               l1_regularization::Real)
     m = Model()
-
     nξ = size(wdm.ξ[t],1)
 
     @variable(m, 0 <= lₜ <= wdm.capacity)
     @variable(m, 0 <= lₜ₊₁[1:nξ] <= wdm.capacity)
-    
+
     @variable(m, 0 <= u[1:nξ] <= wdm.umax)
     @variable(m, s[1:nξ] >= 0)
     @constraint(m, lₜ₊₁ .== wdm.ξ[t][:,1] .- u .+ lₜ .- s)
@@ -61,9 +64,9 @@ function PrimalDualSDDP.dual_bellman_operator(wdm::WaterDamModel, t::Int,
 
     @expression(m, xₜ, [lₜ])
     @expression(m, xₜ₊₁[i=1:nξ], [lₜ₊₁[i]])
-    
+
     md = PrimalDualSDDP.auto_dual_bellman_operator(m, wdm.πξ[t], l1_regularization)
-    set_optimizer(md, optimizer_with_attributes(Clp.Optimizer, "LogLevel" => 0))
+    set_optimizer(md, SOLVER)
 
     return md
 end
