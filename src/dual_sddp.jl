@@ -157,7 +157,7 @@ function dualsddp!(lbm::LinearBellmanModel,
                    solver_pruning=nothing,
                    prunetol::Real = 0.,
                    verbose::Int=n_pass,
-                   l1_regularization::Real = 1e6)
+                   l1_regularization= 1e6)
     n_pruning = div(n_pass, nprune)
 
     println("** Dual SDDP with $(n_pass) passes, $(n_pruning) pruning  **")
@@ -166,7 +166,12 @@ function dualsddp!(lbm::LinearBellmanModel,
     end
 
     T, S = size(lbm.ξs)
-    m = [dual_bellman_operator(lbm, t, l1_regularization) for t in 1:T]
+    if isa(l1_regularization, Vector)
+        m = [dual_bellman_operator(lbm, t, l1_regularization[t]) for t in 1:T]
+    else
+        m = [dual_bellman_operator(lbm, t, l1_regularization) for t in 1:T]
+    end
+
     for (t, Dₜ₊₁) in enumerate(D[2:end])
         initialize_lift_dual!(m[t], lbm, t, Dₜ₊₁)
     end
@@ -186,12 +191,14 @@ function dualsddp!(lbm::LinearBellmanModel,
             for (t, Dₜ₊₁) in enumerate(D[2:end])
                 D[t+1] = unique(Dₜ₊₁)
                 exact_pruning!(D[t+1], solver_pruning, ϵ = prunetol)
-                m[t] = dual_bellman_operator(lbm, t, l1_regularization)
+                l1_reg = isa(l1_regularization, Vector) ? l1_regularization[t] : l1_regularization
+                m[t] = dual_bellman_operator(lbm, t, l1_reg)
                 initialize_lift_dual!(m[t], lbm, t, D[t+1])
             end
         end
         if mod(i, verbose) == 0
-            v₀ = PolyhedralFenchelTransform(D[1], l1_regularization)
+            l1_reg = isa(l1_regularization, Vector) ? l1_regularization[1] : l1_regularization
+            v₀ = PolyhedralFenchelTransform(D[1], l1_reg)
             # TODO
             lb = v₀([0.0], solver_pruning)
             println("Iter $i    lb ", lb)
@@ -219,8 +226,12 @@ function primaldualsddp!(
     end
 
     T, S = size(model.ξs)
+    if isa(l1_regularization, Vector)
+        m_dual = [dual_bellman_operator(lbm, t, l1_regularization[t]) for t in 1:T]
+    else
+        m_dual = [dual_bellman_operator(lbm, t, l1_regularization) for t in 1:T]
+    end
     m_primal = [bellman_operator(model, t) for t in 1:T]
-    m_dual = [dual_bellman_operator(model, t, l1_regularization) for t in 1:T]
 
     for (t, Dₜ₊₁) in enumerate(D[2:end])
         initialize_lift_dual!(m_dual[t], model, t, Dₜ₊₁)
@@ -239,7 +250,8 @@ function primaldualsddp!(
         xscenarios = forward_pass(model, m_primal, ξscenarios, x₀)
         μscenarios = backward_pass!(model, m_primal, V, xscenarios)
         dual_backward_pass!(model, m_dual, D, μscenarios)
-        μ₀ = init(D[1], solver_pruning, l1_regularization)
+        l1_reg = isa(l1_regularization, Vector) ? l1_regularization[1] : l1_regularization
+        μ₀ = init(D[1], solver_pruning, l1_reg)
         dual_cupps_pass(model, m_dual, ξscenarios, D, μ₀)
 
         if mod(i, nprune) == 0
@@ -248,19 +260,21 @@ function primaldualsddp!(
             for (t, Dₜ₊₁) in enumerate(D[2:end])
                 D[t+1] = unique(Dₜ₊₁)
                 exact_pruning!(D[t+1], solver_pruning, ϵ = prunetol)
-                m_dual[t] = dual_bellman_operator(model, t, l1_regularization)
+                l1_reg = isa(l1_regularization, Vector) ? l1_regularization[t] : l1_regularization
+                m_dual[t] = dual_bellman_operator(model, t, l1_reg)
                 initialize_lift_dual!(m_dual[t], model, t, D[t+1])
             end
             V[1] = unique(V[1])
             for (t, Vₜ₊₁) in enumerate(V[2:end])
                 V[t+1] = unique(Vₜ₊₁)
-                exact_pruning!(V[t+1], solver_pruning, ϵ = prunetol)
+                exact_pruning!(V[t+1], solver_pruning, ϵ=prunetol)
                 m[t] = bellman_operator(hdm, t)
                 initialize_lift_primal!(m[t], hdm, t, V[t+1])
             end
         end
         if mod(i, verbose) == 0
-            v₀ = PolyhedralFenchelTransform(D[1], l1_regularization)
+            l1_reg = isa(l1_regularization, Vector) ? l1_regularization[1] : l1_regularization
+            v₀ = PolyhedralFenchelTransform(D[1], l1_reg)
             lb = V[1](x₀)
             ub = v₀(x₀, solver_pruning)
             println("Iter $i  lb ", lb, "  ub ", ub)
