@@ -40,7 +40,7 @@ function new_cut!(hdm::HazardDecisionModel,
     end
     Vₜ.λ = cat(Vₜ.λ, λ', dims = 1)
     push!(Vₜ.γ, γ)
-    return
+    return λ
 end
 
 function update!(hdm::HazardDecisionModel,
@@ -83,16 +83,19 @@ function backward_pass!(hdm::HazardDecisionModel,
                         xscenarios::Array{Float64,3})
     T = length(m)
     n_pass = size(xscenarios, 2)
+    costates = zeros(size(xscenarios))
     for pass in 1:n_pass
-        new_cut!(hdm, V[T], m[T], T, xscenarios[T, pass,:])
+        λ = new_cut!(hdm, V[T], m[T], T, xscenarios[T, pass,:])
+        costates[T, pass, :] .= λ
     end
     @inbounds for t in T:-1:1
         update!(hdm, m[t], V[t+1])
         for pass in 1:n_pass
-            new_cut!(hdm, V[t], m[t], t, xscenarios[t, pass,:])
+            λ = new_cut!(hdm, V[t], m[t], t, xscenarios[t, pass,:])
+            costates[t, pass, :] .= λ
         end
     end
-    return
+    return costates
 end
 
 function primalsddp!(hdm::HazardDecisionModel,

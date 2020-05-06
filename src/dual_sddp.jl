@@ -70,6 +70,18 @@ function dualstate!(lbm::LinearBellmanModel,
     return map(μ♯ -> value.(μ♯), m[:μₜ₊₁])
 end
 
+function dualstatecuts!(lbm::LinearBellmanModel,
+                    Dₜ::PolyhedralFunction,
+                    m::JuMP.Model,
+                    μₜ::Vector{Float64})
+    dualsolve!(lbm, m, μₜ)
+    λ = dual.(FixRef.(m[:μₜ]))
+    γ = objective_value(m) - λ'*μₜ
+    Dₜ.λ = cat(Dₜ.λ, λ', dims = 1)
+    push!(Dₜ.γ, γ)
+    return map(μ♯ -> value.(μ♯), m[:μₜ₊₁])
+end
+
 function dual_forward_pass(lbm::LinearBellmanModel,
                            m::Vector{JuMP.Model},
                            ξscenarios::Array{Float64, 3},
@@ -82,6 +94,29 @@ function dual_forward_pass(lbm::LinearBellmanModel,
         μscenarios[1, pass, :] .= μ₀
         for (t, ξₜ₊₁) in enumerate(eachrow(ξscenarios[:, pass, :]))
             μₜ₊₁ = dualstate!(lbm, m[t], μₜ)
+            μscenarios[t+1, pass,:] .= rand(μₜ₊₁)
+            μₜ = μscenarios[t+1, pass, :]
+        end
+    end
+    return μscenarios
+end
+
+function dual_cupps_pass(lbm::LinearBellmanModel,
+                         m::Vector{JuMP.Model},
+                         ξscenarios::Array{Float64, 3},
+                         D::Vector{PolyhedralFunction},
+                         μ₀::Vector{Float64})
+    T = size(ξscenarios,1)
+    n_pass = size(ξscenarios,2)
+    μscenarios = fill(0., T+1, n_pass, length(μ₀))
+    @inbounds for pass in 1:n_pass
+        μₜ = μ₀
+        μscenarios[1, pass, :] .= μ₀
+        for (t, ξₜ₊₁) in enumerate(eachrow(ξscenarios[:, pass, :]))
+            μₜ₊₁ = dualstatecuts!(lbm, D[t], m[t], μₜ)
+            if t > 1
+                dualupdate!(lbm, m[t-1], D[t])
+            end
             μscenarios[t+1, pass,:] .= rand(μₜ₊₁)
             μₜ = μscenarios[t+1, pass, :]
         end
@@ -144,6 +179,7 @@ function dualsddp!(lbm::LinearBellmanModel,
         μ₀ = sample(seed)
         μscenarios = dual_forward_pass(lbm, m, ξscenarios, μ₀)
         dual_backward_pass!(lbm, m, D, μscenarios)
+
         if mod(i, nprune) == 0
             println("\n Performing pruning number $(div(i, nprune))")
             D[1] = unique(D[1])
@@ -156,9 +192,79 @@ function dualsddp!(lbm::LinearBellmanModel,
         end
         if mod(i, verbose) == 0
             v₀ = PolyhedralFenchelTransform(D[1], l1_regularization)
+            # TODO
             lb = v₀([0.0], solver_pruning)
             println("Iter $i    lb ", lb)
         end
     end
     return m
+end
+
+function primaldualsddp!(
+                   model::LinearBellmanModel,
+                   V::Array{PolyhedralFunction},
+                   D::Array{PolyhedralFunction},
+                   n_pass::Int,
+                   seed::AbstractInitialSampler;
+                   nprune::Int = n_pass,
+                   solver_pruning=nothing,
+                   prunetol::Real = 0.,
+                   verbose::Int=n_pass,
+                   l1_regularization::Real = 1e6)
+
+    n_pruning = div(n_pass, nprune)
+    println("** Dual SDDP with $(n_pass) passes, $(n_pruning) pruning  **")
+    if n_pruning > 0 && isnothing(solver_pruning)
+        error("Could not proceed to pruning as `solver_pruning` is not set.")
+    end
+
+    T, S = size(model.ξs)
+    m_primal = [bellman_operator(model, t) for t in 1:T]
+    m_dual = [dual_bellman_operator(model, t, l1_regularization) for t in 1:T]
+
+    for (t, Dₜ₊₁) in enumerate(D[2:end])
+        initialize_lift_dual!(m_dual[t], model, t, Dₜ₊₁)
+    end
+    for (t, Vₜ₊₁) in enumerate(V[2:end])
+        initialize_lift_primal!(m_primal[t], model, t, Vₜ₊₁)
+    end
+
+    println("Bellman JuMP Models initialized")
+    println("Now running SDDP passes")
+
+    for i in 1:n_pass
+        ξscenarios = model.ξs[:,rand(1:S,1),:]
+
+        x₀ = sample(seed)
+        xscenarios = forward_pass(model, m_primal, ξscenarios, x₀)
+        μscenarios = backward_pass!(model, m_primal, V, xscenarios)
+        dual_backward_pass!(model, m_dual, D, μscenarios)
+        μ₀ = init(D[1], solver_pruning, l1_regularization)
+        dual_cupps_pass(model, m_dual, ξscenarios, D, μ₀)
+
+        if mod(i, nprune) == 0
+            println("\n Performing pruning number $(div(i, nprune))")
+            D[1] = unique(D[1])
+            for (t, Dₜ₊₁) in enumerate(D[2:end])
+                D[t+1] = unique(Dₜ₊₁)
+                exact_pruning!(D[t+1], solver_pruning, ϵ = prunetol)
+                m_dual[t] = dual_bellman_operator(model, t, l1_regularization)
+                initialize_lift_dual!(m_dual[t], model, t, D[t+1])
+            end
+            V[1] = unique(V[1])
+            for (t, Vₜ₊₁) in enumerate(V[2:end])
+                V[t+1] = unique(Vₜ₊₁)
+                exact_pruning!(V[t+1], solver_pruning, ϵ = prunetol)
+                m[t] = bellman_operator(hdm, t)
+                initialize_lift_primal!(m[t], hdm, t, V[t+1])
+            end
+        end
+        if mod(i, verbose) == 0
+            v₀ = PolyhedralFenchelTransform(D[1], l1_regularization)
+            lb = V[1](x₀)
+            ub = v₀(x₀, solver_pruning)
+            println("Iter $i  lb ", lb, "  ub ", ub)
+        end
+    end
+    return m_primal, m_dual
 end
