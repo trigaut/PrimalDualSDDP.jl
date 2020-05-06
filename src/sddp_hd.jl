@@ -101,6 +101,7 @@ function primalsddp!(hdm::HazardDecisionModel,
                      x₀s::Array;
                      nprune::Int = n_pass,
                      solver_pruning=nothing,
+                     verbose::Int=n_pass,
                      prunetol::Real = 0.)
     n_pruning = div(n_pass, nprune)
     println("** Primal SDDP, in Hazard Decision , with $(n_pass) passes and $(n_pruning) pruning  **")
@@ -132,6 +133,10 @@ function primalsddp!(hdm::HazardDecisionModel,
                 m[t] = bellman_operator(hdm, t)
                 initialize_lift_primal!(m[t], hdm, t, V[t+1])
             end
+        end
+        if mod(i, verbose) == 0
+            lb = V[1](x₀)
+            println("Iter $i    lb ", lb)
         end
     end
     return m

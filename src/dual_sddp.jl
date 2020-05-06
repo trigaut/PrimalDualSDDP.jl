@@ -1,3 +1,21 @@
+abstract type AbstractInitialSampler end
+
+sample(::AbstractInitialSampler) = nothing
+
+struct FixedInitSampler <: AbstractInitialSampler
+    init_positions::Array
+    n_positions::Int
+end
+FixedInitSampler(xs::Array) = FixedInitSampler(xs, length(xs))
+
+function sample(s::FixedInitSampler)
+    if s.n_positions == 1
+        return s.init_positions[1]
+    else
+        return [rand(s.init_positions)...]
+    end
+end
+
 function initialize_lift_dual!(m::JuMP.Model,
                                lbm::LinearBellmanModel,
                                t::Int,
@@ -89,13 +107,21 @@ function dual_backward_pass!(lbm::LinearBellmanModel,
     return
 end
 
+function init(D, optimizer_constructor, l1_regularization)
+    model = JuMP.Model(optimizer_constructor)
+    fenchel_transform_as_sup(model, D, [0.0], l1_regularization)
+    JuMP.optimize!(model)
+    return JuMP.value.(model[:λ])
+end
+
 function dualsddp!(lbm::LinearBellmanModel,
                    D::Array{PolyhedralFunction},
                    n_pass::Int,
-                   μ₀s::Array;
+                   seed::AbstractInitialSampler;
                    nprune::Int = n_pass,
                    solver_pruning=nothing,
                    prunetol::Real = 0.,
+                   verbose::Int=n_pass,
                    l1_regularization::Real = 1e6)
     n_pruning = div(n_pass, nprune)
 
@@ -115,11 +141,11 @@ function dualsddp!(lbm::LinearBellmanModel,
 
     @showprogress for i in 1:n_pass
         ξscenarios = lbm.ξs[:,rand(1:S,1),:]
-        μ₀ = [rand(μ₀s)...]
+        μ₀ = sample(seed)
         μscenarios = dual_forward_pass(lbm, m, ξscenarios, μ₀)
         dual_backward_pass!(lbm, m, D, μscenarios)
-        if mod(i,nprune) == 0
-            println("\n Performing pruning number $(div(i,nprune))")
+        if mod(i, nprune) == 0
+            println("\n Performing pruning number $(div(i, nprune))")
             D[1] = unique(D[1])
             for (t, Dₜ₊₁) in enumerate(D[2:end])
                 D[t+1] = unique(Dₜ₊₁)
@@ -128,7 +154,11 @@ function dualsddp!(lbm::LinearBellmanModel,
                 initialize_lift_dual!(m[t], lbm, t, D[t+1])
             end
         end
+        if mod(i, verbose) == 0
+            v₀ = PolyhedralFenchelTransform(D[1], l1_regularization)
+            lb = v₀([0.0], solver_pruning)
+            println("Iter $i    lb ", lb)
+        end
     end
-    exact_pruning!(D[1], solver_pruning, ϵ = prunetol)
     return m
 end

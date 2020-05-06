@@ -29,7 +29,10 @@ function (V::PolyhedralFunction)(x::Array{Float64,1})
 end
 
 function (D::PolyhedralFenchelTransform)(x::Array{Float64,1}, optimizer_constructor)
-    return fenchel_transform_as_sup(D.V, optimizer_constructor, x, D.l1_regularization)
+    model = Model(optimizer_constructor)
+    fenchel_transform_as_sup(model, D.V, x, D.l1_regularization)
+    JuMP.optimize!(model)
+    return JuMP.objective_value(model)
 end
 
 function Base.unique(V::PolyhedralFunction)
@@ -69,11 +72,10 @@ function δ(point::Vector{Float64}, reg::Float64)
     return V
 end
 
-function fenchel_transform_as_sup(D::PolyhedralFunction,
-                                  optimizer_constructor,
+function fenchel_transform_as_sup(m::JuMP.Model,
+                                  D::PolyhedralFunction,
                                   x::Array{Float64, 1},
                                   lip::Real)
-    m = Model(optimizer_constructor)
     nx = size(D.λ, 2)
     @variable(m, -lip <= λ[1:nx] <= lip)
     @variable(m, θ)
@@ -81,15 +83,12 @@ function fenchel_transform_as_sup(D::PolyhedralFunction,
         @constraint(m, θ >= xk'*λ + βk)
     end
     @objective(m, Max, x'*λ - θ)
-    optimize!(m)
-    return objective_value(m)
 end
 
-function fenchel_transform_as_inf(D::PolyhedralFunction,
-                                  optimizer_constructor,
+function fenchel_transform_as_inf(m::JuMP.Model,
+                                  D::PolyhedralFunction,
                                   x::Array{Float64, 1},
                                   lip::Real)
-    m = Model(optimizer_constructor)
     nc, nx = size(D.λ)
     @variable(m, σ[1:nc] >= 0)
     @constraint(m, sum(σ) == 1)
@@ -99,8 +98,6 @@ function fenchel_transform_as_inf(D::PolyhedralFunction,
     @constraint(m, lift .>= y .- x)
     @constraint(m, sum(σk .* D.λ[k,:] for (k,σk) in enumerate(σ)) .== y)
     @objective(m, Min, lip*sum(lift) - sum(σ.*D.γ))
-    optimize!(m)
-    return objective_value(m)
 end
 
 function exact_pruning!(V::PolyhedralFunction, optimizer_constructor;

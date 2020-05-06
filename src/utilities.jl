@@ -70,11 +70,3 @@ function export_lbo_to_scipylp(m::JuMP.Model)
 
     c, A_ub, b_ub, A_eq, b_eq, x_lb, x_ub, indices_xₜ.-1, indices_uₜ.-1
 end
-# using PyCall
-# scipysparse = pyimport("scipy.sparse")
-# np = pyimport("numpy")
-# scipysparse.save_npz("A_eq.npz", scipysparse.csc_matrix(A_eq))
-# scipysparse.save_npz("A_ub.npz", scipysparse.csc_matrix(A_ub))
-# np.savez("vectors.npz", c = c, b_ub = b_ub, b_eq = b_eq, x_lb = x_lb,
-#                         x_ub = x_ub, indices_x = indices_x,
-#                         indices_u = indices_u)
