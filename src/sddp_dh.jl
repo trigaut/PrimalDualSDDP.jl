@@ -97,6 +97,7 @@ function primalsddp!(dhm::DecisionHazardModel,
                      x₀s::Array;
                      nprune::Int = n_pass,
                      solver_pruning=nothing,
+                     verbose::Int=n_pass,
                      prunetol::Real = 0.)
 
     n_pruning = div(n_pass, nprune)
@@ -119,6 +120,7 @@ function primalsddp!(dhm::DecisionHazardModel,
         x₀ = [rand(x₀s)...]
         xscenarios = forward_pass(dhm, m, ξscenarios, x₀)
         backward_pass!(dhm, m, V, xscenarios)
+
         if mod(i,nprune) == 0
             println("\n Performing pruning number $(div(i,nprune))")
             V[1] = unique(V[1])
@@ -129,7 +131,10 @@ function primalsddp!(dhm::DecisionHazardModel,
                 initialize_lift_primal!(m[t], dhm, t, V[t+1])
             end
         end
+        if mod(i, verbose) == 0
+            lb = V[1](x₀)
+            println("Iter $i    lb ", lb)
+        end
     end
-    exact_pruning!(V[1], solver_pruning, ϵ = prunetol)
     return m
 end
