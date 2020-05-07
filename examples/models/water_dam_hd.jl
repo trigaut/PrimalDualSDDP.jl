@@ -1,4 +1,8 @@
-using JuMP, PrimalDualSDDP, Clp
+using JuMP, Clp
+
+using Revise
+
+using PrimalDualSDDP
 
 mutable struct WaterDamModel <: HazardDecisionModel
     Δt::Float64

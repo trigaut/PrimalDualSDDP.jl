@@ -103,18 +103,13 @@ function fenchel_transform_as_inf(D::PolyhedralFunction,
 end
 
 function exact_pruning!(V::PolyhedralFunction; 
-                        lb = -Inf, 
-                        ub = Inf,
-                        ϵ::Real = 0.,
-                        round_precision::Real = 1e-6)
-    V.λ .= round.(V.λ ./ round_precision)*round_precision
-    V.γ .= round.(V.γ ./ round_precision)*round_precision
+                        lb::Vector = fill(-1e6, dim(V) + 1), 
+                        ub::Vector = fill(1e6, dim(V) + 1),
+                        ϵ::Real = 0.)
     islb = true # max of cuts
     isfun = true # max of cuts
     optimizer_constructor = optimizer_with_attributes(Clp.Optimizer, 
                                                       "LogLevel" => 0)
-    # optimizer_constructor = optimizer_with_attributes(CPLEX.Optimizer, 
-    #                                                   "CPX_PARAM_SCRIND" => 0)
 
     dominated_cuts = CutPruners.getdominated(V.λ, V.γ, islb, isfun, 
                                              optimizer_constructor, 
@@ -126,18 +121,17 @@ function exact_pruning!(V::PolyhedralFunction;
     return
 end
 
-function exact_pruning(V::PolyhedralFunction; 
-                       lb = -Inf, 
-                       ub = Inf,
-                       ϵ::Real = 0.,
-                       round_precision::Real = 1e-10)
+function exact_pruning(V::PolyhedralFunction;
+                       lb::Vector = fill(-Inf, dim(V) + 1), 
+                       ub::Vector = fill(Inf, dim(V) + 1 ),
+                       ϵ::Real = 0.)
     V1 = unique(V)
-    V1.λ .= round.(V1.λ ./ round_precision)*round_precision
-    V1.γ .= round.(V1.γ ./ round_precision)*round_precision
     islb = true # max of cuts
     isfun = true # max of cuts
     optimizer_constructor = optimizer_with_attributes(Clp.Optimizer, 
                                                       "LogLevel" => 0)
+    # optimizer_constructor = optimizer_with_attributes(CPLEX.Optimizer, 
+    #                                                   "CPX_PARAM_SCRIND" => 0)
 
     dominated_cuts = CutPruners.getdominated(V1.λ, V1.γ, islb, isfun, 
                                              optimizer_constructor, 

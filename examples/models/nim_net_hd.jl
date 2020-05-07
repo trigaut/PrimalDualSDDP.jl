@@ -1,5 +1,9 @@
 # nim stands for Non Islanded Model
-using JuMP, PrimalDualSDDP, Clp
+using JuMP, Clp
+
+using Revise
+
+using PrimalDualSDDP
 
 mutable struct NonIslandedNetHDModel <: PrimalDualSDDP.HazardDecisionModel
     Δt::Float64

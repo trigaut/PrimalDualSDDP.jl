@@ -1,6 +1,6 @@
 module PrimalDualSDDP
 
-using JuMP, Clp, Dualization, CutPruners
+using JuMP, Clp, Dualization, CutPruners, CPLEX
 using LinearAlgebra, Statistics, MultivariateStats, Clustering 
 using ProgressMeter
 
