@@ -36,14 +36,14 @@ const nim = NonIslandedNetModel(Δt, capacity,
                                10 .* train_data[:,days,2], 
                                10)
 
-const V = [PrimalDualSDDP.PolyhedralFunction([0. 0. 0.], [-100.]) for t in 1:T]
-push!(V, PrimalDualSDDP.PolyhedralFunction([-offpeak 0. 0.], [0.]))
+const V = [PrimalDualSDDP.PolyhedralFunction([0., 0., 0.] => -100.) for t in 1:T]
+push!(V, PrimalDualSDDP.PolyhedralFunction([-offpeak, 0., 0.] => 0.))
     
 const x₀s = collect(Base.product([0., 10.], [5., 10., 20.], [0.]))
 m = PrimalDualSDDP.primalsddp!(nim, V, 200, x₀s, nprune = 50, prunetol = 1e-2)
 
-const λ₀s = collect(eachrow(V[1].λ))
-const D = [PrimalDualSDDP.PolyhedralFunction([0. 0. 0.], [-1e10]) for t in 1:T]
-push!(D, PrimalDualSDDP.δ([-offpeak, 0., 0.], 1e3))
+# const λ₀s = collect(eachrow(V[1].λ))
+# const D = [PrimalDualSDDP.PolyhedralFunction([0. 0. 0.], [-1e10]) for t in 1:T]
+# push!(D, PrimalDualSDDP.δ([-offpeak, 0., 0.], 1e3))
 
-md = PrimalDualSDDP.dualsddp!(nim, D, 200, λ₀s, nprune = 50)
+# md = PrimalDualSDDP.dualsddp!(nim, D, 200, λ₀s, nprune = 50)

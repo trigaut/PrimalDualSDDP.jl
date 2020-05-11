@@ -7,9 +7,9 @@ function initialize_lift_primal!(m::JuMP.Model,
     
     nξ = length(m[:xₜ₊₁])
     @variable(m, θ[1:nξ])
-    for (λ, γ) in eachcut(Vₜ₊₁)
+    for (λ, γ) in cuts(Vₜ₊₁)
         for i in 1:nξ
-            @constraint(m, θ[i] >= λ'*m[:xₜ₊₁][i] + γ)
+            @constraint(m, θ[i] >= λ[1:end-1]'*m[:xₜ₊₁][i] + γ)
         end
     end
     obj_expr = objective_function(m)
@@ -28,22 +28,23 @@ end
 
 function new_cut!(dhm::DecisionHazardModel, 
                   Vₜ::PolyhedralFunction, 
-                  m::JuMP.Model, 
+                  mₜ::JuMP.Model, 
                   xₜ::Vector{Float64})
-    primalsolve!(dhm, m, xₜ)
-    λ = dual.(FixRef.(m[:xₜ]))
-    γ = objective_value(m) - λ'*xₜ
-    Vₜ.λ = cat(Vₜ.λ, λ', dims = 1)
-    push!(Vₜ.γ, γ)
-    return
+    primalsolve!(dhm, mₜ, xₜ)
+    λ = dual.(FixRef.(mₜ[:xₜ]))
+    γ = objective_value(mₜ) - λ'*xₜ
+    cut = λ => γ
+    push_cut!(Vₜ, cut)
+    return cut
 end
 
-function update!(dhm::DecisionHazardModel, 
-                 mₜ::JuMP.Model, 
-                 Vₜ₊₁::PolyhedralFunction)
+function add_cut_to_model!(dhm::DecisionHazardModel, 
+                           mₜ::JuMP.Model, 
+                           cut::Cut)
     nξ = length(mₜ[:θ])
+    λ, γ = cut
     for i in 1:nξ
-        @constraint(mₜ, mₜ[:θ][i] >= Vₜ₊₁.λ[end,:]'*mₜ[:xₜ₊₁][i] + Vₜ₊₁.γ[end])
+        @constraint(mₜ, mₜ[:θ][i] >= λ'*mₜ[:xₜ₊₁][i] + γ)
     end
     return
 end
@@ -76,28 +77,29 @@ end
 
 function backward_pass!(dhm::DecisionHazardModel,
                         m::Vector{JuMP.Model},
-                        V::Vector{PolyhedralFunction},
-                        xscenarios::Array{Float64,3})
+                        V::Vector{PolyhedralFunction{R}},
+                        xscenarios::Array{Float64,3}) where R <: Real
     T = length(m)
-    n_pass = size(xscenarios, 2)
-    for pass in 1:n_pass
-        new_cut!(dhm, V[T], m[T], xscenarios[T,pass,:])
-    end
-    for t in T:-1:1
-        update!(dhm, m[t], V[t+1])
+    _, n_pass, x_dim = size(xscenarios)
+    λ = zeros(x_dim)
+    for t in T:-1:2
         for pass in 1:n_pass
-            new_cut!(dhm, V[t], m[t], xscenarios[t,pass,:])
+            cut = new_cut!(dhm, V[t], m[t], xscenarios[t,pass,:])
+            add_cut_to_model!(dhm, m[t-1], cut)
         end
+    end
+    for pass in 1:n_pass
+        new_cut!(dhm, V[1], m[1], xscenarios[1,pass,:])
     end
     return 
 end
 
 function primalsddp!(dhm::DecisionHazardModel, 
-                     V::Array{PolyhedralFunction}, 
+                     V::Array{PolyhedralFunction{R}, 1}, 
                      n_pass::Int, 
                      x₀s::Array;
                      nprune::Int = n_pass,
-                     prunetol::Real = 0.)
+                     prunetol::Real = 0.) where R <: Real
     println("** Primal SDDP with $(n_pass) passes, $(div(n_pass,nprune)) pruning  **")
     T, S = size(dhm.ξs)
     m = [bellman_operator(dhm, t) for t in 1:T]
@@ -113,15 +115,13 @@ function primalsddp!(dhm::DecisionHazardModel,
         backward_pass!(dhm, m, V, xscenarios)
         if mod(i,nprune) == 0
             println("\n Performing pruning number $(div(i,nprune))")
-            V[1] = unique(V[1])
             for (t, Vₜ₊₁) in enumerate(V[2:end])
-                V[t+1] = unique(Vₜ₊₁)
-                exact_pruning!(V[t+1], ϵ = prunetol)
+                V[t+1] = lp_pruning(Vₜ₊₁)
                 m[t] = bellman_operator(dhm, t)
                 initialize_lift_primal!(m[t], dhm, t, V[t+1])
             end
         end
     end
-    exact_pruning!(V[1], ϵ = prunetol)
+    lp_pruning(V[1])
     return m
 end
