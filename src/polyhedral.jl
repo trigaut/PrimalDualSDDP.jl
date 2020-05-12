@@ -206,10 +206,8 @@ function raytracing_pruning!(fref::PolyhedralFunction{T}, xi::Vector) where T <:
     fm
 end
 
-function lp_pruning(fref::PolyhedralFunction{T}) where T <: Real
-    dim_f = ndims(fref)
-    f = deepcopy(fref)
-    fm = PolyhedralFunction{T}()
+function lp_pruning!(f::PolyhedralFunction{T}) where T <: Real
+    dim_f = ndims(f)
     for (Ci, γ) in cuts(f)
         remove_cut!(f, Ci)
         lp = Model(optimizer_with_attributes(Clp.Optimizer, "LogLevel" => 0))
@@ -218,13 +216,10 @@ function lp_pruning(fref::PolyhedralFunction{T}) where T <: Real
         for (C,γc) in cuts(f)
             @constraint(lp, dot(C, x) + γc <= 0.)
         end
-        for (C,γc) in cuts(fm)
-            @constraint(lp, dot(C, x) + γc <= 0.)
-        end
         optimize!(lp)
         if (termination_status(lp) != MOI.OPTIMAL) || (objective_value(lp) + γ > 0.)
-            push_halfspace!(fm, (Ci,γ))
+            push_halfspace!(f, (Ci,γ))
         end
     end
-    fm
+    return
 end

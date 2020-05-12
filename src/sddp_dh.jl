@@ -7,9 +7,14 @@ function initialize_lift_primal!(m::JuMP.Model,
     
     nξ = length(m[:xₜ₊₁])
     @variable(m, θ[1:nξ])
+    m.ext[:cuts] = Dict()
     for (λ, γ) in cuts(Vₜ₊₁)
-        for i in 1:nξ
-            @constraint(m, θ[i] >= λ[1:end-1]'*m[:xₜ₊₁][i] + γ)
+        if !isbound((λ, γ))
+            m.ext[:cuts][λ] = ConstraintRef[]
+            for i in 1:nξ
+                c = @constraint(m, θ[i] >= λ[1:end-1]'*m[:xₜ₊₁][i] + γ)
+                push!(m.ext[:cuts][λ], c)
+            end
         end
     end
     obj_expr = objective_function(m)
@@ -38,13 +43,20 @@ function new_cut!(dhm::DecisionHazardModel,
     return cut
 end
 
-function add_cut_to_model!(dhm::DecisionHazardModel, 
-                           mₜ::JuMP.Model, 
-                           cut::Cut)
+function update_cut_in_model!(dhm::DecisionHazardModel, 
+                              mₜ::JuMP.Model, 
+                              cut::Cut)
     nξ = length(mₜ[:θ])
     λ, γ = cut
-    for i in 1:nξ
-        @constraint(mₜ, mₜ[:θ][i] >= λ'*mₜ[:xₜ₊₁][i] + γ)
+    if λ in keys(mₜ.ext[:cuts])
+        constraints = mₜ.ext[:cuts][λ]
+        JuMP.set_normalized_rhs.(constraints, γ)
+    else
+        mₜ.ext[:cuts][λ] = ConstraintRef[]
+        for i in 1:nξ
+            c = @constraint(mₜ, mₜ[:θ][i] >= λ'*mₜ[:xₜ₊₁][i] + γ)
+            push!(mₜ.ext[:cuts][λ], c)
+        end
     end
     return
 end
@@ -85,7 +97,7 @@ function backward_pass!(dhm::DecisionHazardModel,
     for t in T:-1:2
         for pass in 1:n_pass
             cut = new_cut!(dhm, V[t], m[t], xscenarios[t,pass,:])
-            add_cut_to_model!(dhm, m[t-1], cut)
+            update_cut_in_model!(dhm, m[t-1], cut)
         end
     end
     for pass in 1:n_pass
@@ -116,12 +128,12 @@ function primalsddp!(dhm::DecisionHazardModel,
         if mod(i,nprune) == 0
             println("\n Performing pruning number $(div(i,nprune))")
             for (t, Vₜ₊₁) in enumerate(V[2:end])
-                V[t+1] = lp_pruning(Vₜ₊₁)
+                lp_pruning!(Vₜ₊₁)
                 m[t] = bellman_operator(dhm, t)
                 initialize_lift_primal!(m[t], dhm, t, V[t+1])
             end
         end
     end
-    lp_pruning(V[1])
+    lp_pruning!(V[1])
     return m
 end

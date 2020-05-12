@@ -38,6 +38,11 @@ const nim = NonIslandedNetModel(Δt, capacity,
 
 const V = [PrimalDualSDDP.PolyhedralFunction([0., 0., 0.] => -100.) for t in 1:T]
 push!(V, PrimalDualSDDP.PolyhedralFunction([-offpeak, 0., 0.] => 0.))
+for v in V
+  PrimalDualSDDP.update_bounds!(v, 1, lower_bound = 0., upper_bound = capacity)
+  PrimalDualSDDP.update_bounds!(v, 2, lower_bound = 0., upper_bound = 2*capacity)
+  PrimalDualSDDP.update_bounds!(v, 3, lower_bound = -1e3, upper_bound = 1e3)
+end
     
 const x₀s = collect(Base.product([0., 10.], [5., 10., 20.], [0.]))
 m = PrimalDualSDDP.primalsddp!(nim, V, 200, x₀s, nprune = 50, prunetol = 1e-2)
