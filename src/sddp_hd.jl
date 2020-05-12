@@ -129,8 +129,7 @@ function primalsddp!(hdm::HazardDecisionModel,
         if mod(i, nprune) == 0
             println("\n Performing pruning number $(div(i, nprune))")
             for (t, Vₜ₊₁) in enumerate(V[2:end])
-                V[t+1] = unique(Vₜ₊₁)
-                exact_pruning!(V[t+1], pruner)
+                prune!(V[t+1], pruner)
                 m[t] = bellman_operator(hdm, t)
                 initialize_lift_primal!(m[t], hdm, t, V[t+1])
             end

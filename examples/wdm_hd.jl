@@ -20,7 +20,7 @@ const wdm = WaterDamModel(Δt, cap,
                           rain_scenarios,
                           bins)
 
-const primal_pruner = PrimalDualSDDP.ExactPruner(SOLVER, lb = [0.], ub = [capacity])
+const primal_pruner = PrimalDualSDDP.ExactPruner(SOLVER, lb = [0.], ub = [cap])
 
 V = [PrimalDualSDDP.PolyhedralFunction([0.0]', [-1e4]) for t in 1:T]
 push!(V, PrimalDualSDDP.PolyhedralFunction([0.0]', [0.0]))
@@ -35,11 +35,13 @@ D = [PrimalDualSDDP.PolyhedralFunction([0.0]', [-1e4]) for t in 1:T]
 push!(D, PrimalDualSDDP.δ([0.0], 1e4))
 
 
-const dual_pruner = PrimalDualSDDP.ExactPruner(SOLVER)
+const dual_pruner = PrimalDualSDDP.ExactPruner(SOLVER, 
+                                               lb = -l1_regularization,
+                                               ub = l1_regularization)
 
-λ₀s = collect(eachrow(V[1].λ))
+λ₀s = PrimalDualSDDP.FixedInitSampler(collect(eachrow(V[1].λ)))
 dual_models = @time PrimalDualSDDP.dualsddp!(wdm, D, 100, λ₀s,
-                                             nprune=101,
+                                             nprune=25,
                                              pruner=dual_pruner,
                                              l1_regularization=l1_regularization);
 

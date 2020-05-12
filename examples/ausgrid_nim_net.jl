@@ -8,7 +8,6 @@ full_train_data = load(joinpath(@__DIR__,"ausgrid_train_80.jld"))["data"]
 days = 150:180
 train_data = 5 .* full_train_data[:,days,1] .- 10 .* full_train_data[:,days,2]
 Pmax, Dmax = extrema(train_data)
-
 T = size(train_data,1)
 Δt = 24/T
 S = size(train_data,2)
@@ -49,7 +48,7 @@ const V = [PrimalDualSDDP.PolyhedralFunction([0. 0. 0.], [-100.]) for t in 1:T]
 push!(V, PrimalDualSDDP.PolyhedralFunction([-offpeak 0. 0.], [0.]))
     
 const x₀s = collect(Base.product([0., 10.], [5., 10., 20.], [0.]))
-m = PrimalDualSDDP.primalsddp!(nim, V, 200, x₀s, nprune=50, pruner=primal_pruner)
+m = PrimalDualSDDP.primalsddp!(nim, V, 50, x₀s, nprune=10, pruner=primal_pruner)
 
 const λ₀s = PrimalDualSDDP.FixedInitSampler(collect(eachrow(V[1].λ)))
 const D = [PrimalDualSDDP.PolyhedralFunction([0. 0. 0.], [-1e10]) for t in 1:T]
@@ -57,8 +56,10 @@ push!(D, PrimalDualSDDP.δ([-offpeak, 0., 0.], 1e3))
 
 const l1_regularization = 200.
 
-const dual_pruner = PrimalDualSDDP.ExactPruner(SOLVER)
+const dual_pruner = PrimalDualSDDP.ExactPruner(SOLVER, 
+                                               lb = -l1_regularization,
+                                               ub = l1_regularization)
 
-md = PrimalDualSDDP.dualsddp!(nim, D, 200, λ₀s, 
-                              nprune=50, pruner=dual_pruner,
+md = PrimalDualSDDP.dualsddp!(nim, D, 50, λ₀s, 
+                              nprune=10, pruner=dual_pruner,
                               l1_regularization=l1_regularization)
