@@ -7,6 +7,8 @@ begin const
 full_train_data = load(joinpath(@__DIR__,"ausgrid_train_80.jld"))["data"]
 days = 150:180
 train_data = 5 .* full_train_data[:,days,1] .- 10 .* full_train_data[:,days,2]
+Pmax, Dmax = extrema(train_data)
+
 T = size(train_data,1)
 Δt = 24/T
 S = size(train_data,2)
@@ -16,7 +18,7 @@ capacity = 10.
 pbmax = 5.
 pbmin = -5.
 pemax = 100.
-Δhmax = 20.
+Δhmax = 2*capacity
 csell = fill(0., T)
 
 # Australian time of use tariff
@@ -40,8 +42,8 @@ const nim = NonIslandedNetModel(Δt, capacity,
 
 
 const primal_pruner = PrimalDualSDDP.ExactPruner(SOLVER, 
-                                                 lb = [0., 0., -1e2], 
-                                                 ub = [capacity, 2*capacity, 1e2])
+                                                 lb = [0., 0., Pmax], 
+                                                 ub = [capacity, Δhmax, Dmax])
 
 const V = [PrimalDualSDDP.PolyhedralFunction([0. 0. 0.], [-100.]) for t in 1:T]
 push!(V, PrimalDualSDDP.PolyhedralFunction([-offpeak 0. 0.], [0.]))
@@ -56,8 +58,8 @@ push!(D, PrimalDualSDDP.δ([-offpeak, 0., 0.], 1e3))
 const l1_regularization = 200.
 
 const dual_pruner = PrimalDualSDDP.ExactPruner(SOLVER, 
-                                               lb = [0., 0., -1e2], 
-                                               ub = [capacity, 2*capacity, 1e2])
+                                               lb = [0., 0., Pmax], 
+                                               ub = [capacity, 2*capacity, Dmax])
 
 md = PrimalDualSDDP.dualsddp!(nim, D, 200, λ₀s, 
                               nprune=50, pruner=dual_pruner,
