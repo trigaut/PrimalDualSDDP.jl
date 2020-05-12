@@ -1,5 +1,6 @@
 # nim stands for Non Islanded Model
 using JuMP, Clp
+const SOLVER = optimizer_with_attributes(Clp.Optimizer, "LogLevel" => 0)
 
 using Revise
 
@@ -56,7 +57,7 @@ end
 
 function PrimalDualSDDP.bellman_operator(nim::NonIslandedNetModel, t::Int)
 
-    m = JuMP.Model(optimizer_with_attributes(Clp.Optimizer, "LogLevel" => 0))
+    m = JuMP.Model(SOLVER)
     ξ = nim.ξ[t]
     nξ = length(ξ)
     
@@ -99,7 +100,7 @@ function PrimalDualSDDP.dual_bellman_operator(nim::NonIslandedNetModel,
                                               t::Int,
                                               l1_regularization::Real)
     md = PrimalDualSDDP.auto_dual_bellman_operator(nim, t, l1_regularization)
-    set_optimizer(md, optimizer_with_attributes(Clp.Optimizer, "LogLevel" => 0))
+    set_optimizer(md, SOLVER)
 
     md
 end

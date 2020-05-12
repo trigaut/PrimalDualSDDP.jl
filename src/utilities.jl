@@ -3,8 +3,8 @@ function variables_product(args...)
     products = Base.product(args...)
     products_array = fill(0., length(products), dim_variable)
     for (i, product) in enumerate(products)
-        products_array[i,:] .= [product...]  
-    end 
+        products_array[i,:] .= [product...]
+    end
     products_array
 end
 
@@ -21,12 +21,12 @@ function export_lbo_to_lp(m::JuMP.Model, filename::String)
 end
 
 # returns the problem matrices in scipy linprog form
-# min c'x 
+# min c'x
 # s.t A_ub x <= b_ub
 #     A_eq x = b_eq
 #     x_lb <= x <= x_ub
 #
-# plus the indices of the states to fix their value 
+# plus the indices of the states to fix their value
 function export_lbo_to_scipylp(m::JuMP.Model)
     Asparse, lb, ub, _ = JuMP._std_matrix(m)
     nvars =  JuMP.num_variables(m)
@@ -50,7 +50,7 @@ function export_lbo_to_scipylp(m::JuMP.Model)
     rows_eq = Int[]
     # parse constraints
     for (i,row) in enumerate(eachrow(Asparse))
-        if lb[nvars + i] == ub[nvars + i] && ub[nvars + i] < Inf 
+        if lb[nvars + i] == ub[nvars + i] && ub[nvars + i] < Inf
             push!(rows_eq, i)
         else
             if lb[nvars + i] > -Inf
@@ -59,13 +59,13 @@ function export_lbo_to_scipylp(m::JuMP.Model)
             if ub[nvars + i] < Inf
                 push!(rows_ub, i)
             end
-        end 
+        end
     end
 
     A_ub = cat(Asparse[rows_ub,1:nvars], -Asparse[rows_lb,1:nvars], dims = 1)
     A_eq = Asparse[rows_eq,1:nvars]
 
-    b_ub = cat(ub[nvars .+ rows_ub], -lb[nvars .+ rows_lb], dims = 1) 
+    b_ub = cat(ub[nvars .+ rows_ub], -lb[nvars .+ rows_lb], dims = 1)
     b_eq = lb[nvars .+ rows_eq]
 
     c, A_ub, b_ub, A_eq, b_eq, x_lb, x_ub, indices_xₜ.-1, indices_uₜ.-1
