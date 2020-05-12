@@ -57,9 +57,7 @@ push!(D, PrimalDualSDDP.δ([-offpeak, 0., 0.], 1e3))
 
 const l1_regularization = 200.
 
-const dual_pruner = PrimalDualSDDP.ExactPruner(SOLVER, 
-                                               lb = [0., 0., Pmax], 
-                                               ub = [capacity, 2*capacity, Dmax])
+const dual_pruner = PrimalDualSDDP.ExactPruner(SOLVER)
 
 md = PrimalDualSDDP.dualsddp!(nim, D, 200, λ₀s, 
                               nprune=50, pruner=dual_pruner,
