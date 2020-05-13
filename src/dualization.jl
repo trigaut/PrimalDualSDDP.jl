@@ -1,8 +1,8 @@
 function auto_dual_bellman_operator(m::JuMP.Model, weights::Vector{Float64}, lip::Real)
     md = dualize(m; dual_names = DualNames("", ""))
 
-    nx = length(m[:xₜ]) 
-    info =  VariableInfo(false, NaN, false, NaN, false, NaN, 
+    nx = length(m[:xₜ])
+    info =  VariableInfo(false, NaN, false, NaN, false, NaN,
                          false, NaN, false, false)
 
     md[:μₜ] = VariableRef[]
@@ -15,7 +15,7 @@ function auto_dual_bellman_operator(m::JuMP.Model, weights::Vector{Float64}, lip
 
     xₜ₊₁uniquenames = unique(cat(map(x -> name.(x), m[:xₜ₊₁])..., dims=1))
 
-    info =  VariableInfo(true, -lip, true, lip, false, NaN, 
+    info =  VariableInfo(true, -lip, true, lip, false, NaN,
                          false, NaN, false, false)
 
     for var in xₜ₊₁uniquenames
@@ -29,7 +29,7 @@ function auto_dual_bellman_operator(m::JuMP.Model, weights::Vector{Float64}, lip
             set_normalized_coefficient(con, adjointvar, -weights[varindex])
         end
     end
-    
+
     md[:μₜ₊₁] = Array{Array{VariableRef,1},1}()
     for var_array in m[:xₜ₊₁]
         push!(md[:μₜ₊₁], variable_by_name.(md, "μ".*name.(var_array)))

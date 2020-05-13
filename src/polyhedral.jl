@@ -25,11 +25,14 @@ function PolyhedralFenchelTransform(V::PolyhedralFunction)
 end
 
 function (V::PolyhedralFunction)(x::Array{Float64,1})
-        return maximum(V.λ*x .+ V.γ)
+    return maximum(V.λ*x .+ V.γ)
 end
 
-function (D::PolyhedralFenchelTransform)(x::Array{Float64,1})
-    return fenchel_transform_as_sup(D.V, x, D.l1_regularization)
+function (D::PolyhedralFenchelTransform)(x::Array{Float64,1}, optimizer_constructor)
+    model = Model(optimizer_constructor)
+    fenchel_transform_as_sup(model, D.V, x, D.l1_regularization)
+    JuMP.optimize!(model)
+    return JuMP.objective_value(model)
 end
 
 function Base.unique(V::PolyhedralFunction)
@@ -49,14 +52,13 @@ function add_cut!(V, λ, γ)
 end
 
 function remove_cut!(V::PolyhedralFunction, cut_index::Int)
-    V.λ = V.λ[(1:cut_index-1)∪(cut_index+1:end),:] 
+    V.λ = V.λ[(1:cut_index-1)∪(cut_index+1:end),:]
     V.γ = V.γ[(1:cut_index-1)∪(cut_index+1:end)]
     return
 end
 
-
 function remove_cut(V::PolyhedralFunction, cut_index::Int)
-    return PolyhedralFunction(V.λ[(1:cut_index-1)∪(cut_index+1:end),:], 
+    return PolyhedralFunction(V.λ[(1:cut_index-1)∪(cut_index+1:end),:],
                               V.γ[(1:cut_index-1)∪(cut_index+1:end)])
 end
 
@@ -70,10 +72,10 @@ function δ(point::Vector{Float64}, reg::Float64)
     return V
 end
 
-function fenchel_transform_as_sup(D::PolyhedralFunction, 
-                                  x::Array{Float64, 1}, 
+function fenchel_transform_as_sup(m::JuMP.Model,
+                                  D::PolyhedralFunction,
+                                  x::Array{Float64, 1},
                                   lip::Real)
-    m = Model(optimizer_with_attributes(Clp.Optimizer, "LogLevel" => 0))
     nx = size(D.λ, 2)
     @variable(m, -lip <= λ[1:nx] <= lip)
     @variable(m, θ)
@@ -81,14 +83,12 @@ function fenchel_transform_as_sup(D::PolyhedralFunction,
         @constraint(m, θ >= xk'*λ + βk)
     end
     @objective(m, Max, x'*λ - θ)
-    optimize!(m)
-    return objective_value(m)
 end
 
-function fenchel_transform_as_inf(D::PolyhedralFunction, 
-                                  x::Array{Float64, 1}, 
+function fenchel_transform_as_inf(m::JuMP.Model,
+                                  D::PolyhedralFunction,
+                                  x::Array{Float64, 1},
                                   lip::Real)
-    m = Model(optimizer_with_attributes(Clp.Optimizer, "LogLevel" => 0))
     nc, nx = size(D.λ)
     @variable(m, σ[1:nc] >= 0)
     @constraint(m, sum(σ) == 1)
@@ -98,6 +98,4 @@ function fenchel_transform_as_inf(D::PolyhedralFunction,
     @constraint(m, lift .>= y .- x)
     @constraint(m, sum(σk .* D.λ[k,:] for (k,σk) in enumerate(σ)) .== y)
     @objective(m, Min, lip*sum(lift) - sum(σ.*D.γ))
-    optimize!(m)
-    return objective_value(m)
 end

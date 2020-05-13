@@ -1,6 +1,13 @@
 # nim stands for Non Islanded Model
+using JuMP, Clp
 
-mutable struct NonIslandedNetHDModel <: HazardDecisionModel
+const SOLVER = optimizer_with_attributes(Clp.Optimizer, "LogLevel" => 0)
+
+using Revise
+
+using PrimalDualSDDP
+
+mutable struct NonIslandedNetHDModel <: PrimalDualSDDP.HazardDecisionModel
     Δt::Float64
     capacity::Float64
     ρc::Float64
@@ -24,7 +31,7 @@ function NonIslandedNetHDModel(Δt::Float64, capacity::Float64,
                           cbuy::Vector{Float64}, csell::Vector{Float64}, 
                           net_d_scenarios::Array{Float64,2}, bins::Int)
     ξs = net_d_scenarios    
-    ξ, πξ = discrete_white_noise(ξs, bins);
+    ξ, πξ = PrimalDualSDDP.discrete_white_noise(ξs, bins);
 
     function fₜ(t, xₜ, uₜ, ξₜ₊₁)
         xₜ₊₁ = [xₜ[1] + ρc*uₜ[1] - 1/ρd*uₜ[2],
@@ -38,9 +45,9 @@ function NonIslandedNetHDModel(Δt::Float64, capacity::Float64,
                          ξ, πξ, ξs[:,:,:], fₜ)
 end
 
-function bellman_operator(nim::NonIslandedNetHDModel, t::Int)
+function PrimalDualSDDP.bellman_operator(nim::NonIslandedNetHDModel, t::Int)
 
-    m = JuMP.Model(optimizer_with_attributes(Clp.Optimizer, "LogLevel" => 0))
+    m = JuMP.Model(SOLVER)
     ξ = nim.ξ[t]
     nξ = length(ξ)
     
@@ -74,9 +81,9 @@ function bellman_operator(nim::NonIslandedNetHDModel, t::Int)
     return m
 end
 
-function dual_bellman_operator(nim::NonIslandedNetHDModel, 
-                               t::Int, 
-                               l1_regularization::Real)
+function PrimalDualSDDP.dual_bellman_operator(nim::NonIslandedNetHDModel, 
+                                              t::Int, 
+                                              l1_regularization::Real)
 
     m = JuMP.Model()
     ξ = nim.ξ[t]
@@ -106,8 +113,8 @@ function dual_bellman_operator(nim::NonIslandedNetHDModel,
     @expression(m, xₜ, [socₜ, hₜ])
     @expression(m, xₜ₊₁[i=1:nξ], [socₜ₊₁[i], hₜ₊₁[i]])
 
-    md = auto_dual_bellman_operator(m, nim.πξ[t], l1_regularization)
-    set_optimizer(md, optimizer_with_attributes(Clp.Optimizer, "LogLevel" => 0))
+    md = PrimalDualSDDP.auto_dual_bellman_operator(m, nim.πξ[t], l1_regularization)
+    set_optimizer(md, SOLVER)
 
     md
 end
