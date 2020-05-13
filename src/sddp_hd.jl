@@ -139,6 +139,5 @@ function primalsddp!(hdm::HazardDecisionModel,
             println("Iter $i    lb ", lb)
         end
     end
-    prune!(V[1], pruner)
     return m
 end
