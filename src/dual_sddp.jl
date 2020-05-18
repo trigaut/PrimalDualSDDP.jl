@@ -217,14 +217,14 @@ function primaldualsddp!(model::LinearBellmanModel,
                          n_pass::Int,
                          seed::AbstractInitialSampler;
                          nprune::Int = n_pass,
-                         solver=nothing,
+                         pruner=nothing,
                          verbose::Int=n_pass+1,
                          l1_regularization::Real = 1e6)
 
     n_pruning = div(n_pass, nprune)
     println("** Dual SDDP with $(n_pass) passes, $(n_pruning) pruning  **")
-    if n_pruning > 0 && isnothing(solver)
-        error("Could not proceed to pruning as `solver` is not set.")
+    if n_pruning > 0 && isnothing(pruner)
+        error("Could not proceed to pruning as `pruner` is not set.")
     end
 
     T, S = size(model.ξs)
