@@ -191,7 +191,7 @@ function dualsddp!(lbm::LinearBellmanModel,
         μscenarios = dual_forward_pass(lbm, m, ξscenarios, μ₀)
         dual_backward_pass!(lbm, m, D, μscenarios)
 
-        if mod(i, nprune) == 0
+        if mod(i, nprune) == 0 && !isnothing(pruner)
             println("\n Performing pruning number $(div(i, nprune))")
             for (t, Dₜ₊₁) in enumerate(D[2:end])
                 prune!(D[t+1], pruner)
@@ -207,6 +207,9 @@ function dualsddp!(lbm::LinearBellmanModel,
             lb = v₀(μ₀, pruner.optimizer_constructor)
             println("Iter $i    lb ", lb)
         end
+    end
+    if !isnothing(pruner)
+        prune!(D[1], pruner)
     end
     return m
 end
@@ -256,7 +259,7 @@ function primaldualsddp!(model::LinearBellmanModel,
         μ₀ = initial_position(D[1], seed, pruner.optimizer_constructor, l1_reg)
         dual_cupps_pass(model, m_dual, ξscenarios, D, μ₀)
 
-        if mod(i, nprune) == 0
+        if mod(i, nprune) == 0 && !isnothing(pruner)
             println("\n Performing pruning number $(div(i, nprune))")
             for (t, Dₜ₊₁) in enumerate(D[2:end])
                 prune!(D[t+1], pruner)
@@ -264,9 +267,7 @@ function primaldualsddp!(model::LinearBellmanModel,
                 m_dual[t] = dual_bellman_operator(model, t, l1_reg)
                 initialize_lift_dual!(m_dual[t], model, t, D[t+1])
             end
-            V[1] = unique(V[1])
             for (t, Vₜ₊₁) in enumerate(V[2:end])
-                V[t+1] = unique(Vₜ₊₁)
                 prune!(V[t+1], pruner)
                 m[t] = bellman_operator(hdm, t)
                 initialize_lift_primal!(m[t], hdm, t, V[t+1])
@@ -279,6 +280,10 @@ function primaldualsddp!(model::LinearBellmanModel,
             ub = v₀(x₀, pruner.optimizer_constructor)
             println("Iter $i  lb ", lb, "  ub ", ub)
         end
+    end
+    if !isnothing(pruner)
+        prune!(V[1], pruner)
+        prune!(D[1], pruner)
     end
     return m_primal, m_dual
 end
