@@ -120,7 +120,7 @@ function primalsddp!(dhm::DecisionHazardModel,
         xscenarios = forward_pass(dhm, m, ξscenarios, x₀)
         backward_pass!(dhm, m, V, xscenarios)
 
-        if mod(i,nprune) == 0
+        if mod(i,nprune) == 0 && !isnothing(pruner)
             println("\n Performing pruning number $(div(i,nprune))")
             for (t, Vₜ₊₁) in enumerate(V[2:end])
                 prune!(V[t+1], pruner)
@@ -133,6 +133,8 @@ function primalsddp!(dhm::DecisionHazardModel,
             println("Iter $i    lb ", lb)
         end
     end
-    prune!(V[1], pruner)
+    if !isnothing(pruner)
+        prune!(V[1], pruner)
+    end
     return m
 end

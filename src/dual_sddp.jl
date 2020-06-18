@@ -142,9 +142,14 @@ function dual_backward_pass!(lbm::LinearBellmanModel,
     return
 end
 
-function init(D, optimizer_constructor, l1_regularization)
+# TODO: currently we rebuild a JuMP Model each time we recompute the
+# initial position. We should find a better way to keep them in sync
+# with new cuts added.
+function initial_position(D, seed, optimizer_constructor, l1_regularization)
     model = JuMP.Model(optimizer_constructor)
-    fenchel_transform_as_sup(model, D, [0.0], l1_regularization)
+    JuMP.set_silent(model)
+    x₀ = sample(seed)
+    fenchel_transform_as_sup(model, D, x₀, l1_regularization)
     JuMP.optimize!(model)
     return JuMP.value.(model[:λ])
 end
@@ -156,7 +161,7 @@ function dualsddp!(lbm::LinearBellmanModel,
                    nprune::Int = n_pass,
                    pruner=nothing,
                    prunetol::Real = 0.,
-                   verbose::Int=n_pass,
+                   verbose::Int=n_pass+1,
                    l1_regularization= 1e6)
     n_pruning = div(n_pass, nprune)
 
@@ -179,13 +184,14 @@ function dualsddp!(lbm::LinearBellmanModel,
     println("Dual Bellman JuMP Models initialized")
     println("Now running SDDP passes")
 
-    @showprogress for i in 1:n_pass
-        ξscenarios = lbm.ξs[:,rand(1:S,1),:]
-        μ₀ = sample(seed)
+    for i in 1:n_pass
+        ξscenarios = lbm.ξs[:, rand(1:S,1), :]
+        l1_reg = isa(l1_regularization, Vector) ? l1_regularization[1] : l1_regularization
+        μ₀ = initial_position(D[1], seed, pruner.optimizer_constructor, l1_reg)
         μscenarios = dual_forward_pass(lbm, m, ξscenarios, μ₀)
         dual_backward_pass!(lbm, m, D, μscenarios)
 
-        if mod(i, nprune) == 0
+        if mod(i, nprune) == 0 && !isnothing(pruner)
             println("\n Performing pruning number $(div(i, nprune))")
             for (t, Dₜ₊₁) in enumerate(D[2:end])
                 prune!(D[t+1], pruner)
@@ -202,20 +208,21 @@ function dualsddp!(lbm::LinearBellmanModel,
             println("Iter $i    lb ", lb)
         end
     end
-    prune!(D[1], pruner)
+    if !isnothing(pruner)
+        prune!(D[1], pruner)
+    end
     return m
 end
 
-function primaldualsddp!(
-                   model::LinearBellmanModel,
-                   V::Array{PolyhedralFunction},
-                   D::Array{PolyhedralFunction},
-                   n_pass::Int,
-                   seed::AbstractInitialSampler;
-                   nprune::Int = n_pass,
-                   pruner=nothing,
-                   verbose::Int=n_pass,
-                   l1_regularization::Real = 1e6)
+function primaldualsddp!(model::LinearBellmanModel,
+                         V::Array{PolyhedralFunction},
+                         D::Array{PolyhedralFunction},
+                         n_pass::Int,
+                         seed::AbstractInitialSampler;
+                         nprune::Int = n_pass,
+                         pruner=nothing,
+                         verbose::Int=n_pass+1,
+                         l1_regularization::Real = 1e6)
 
     n_pruning = div(n_pass, nprune)
     println("** Dual SDDP with $(n_pass) passes, $(n_pruning) pruning  **")
@@ -225,9 +232,9 @@ function primaldualsddp!(
 
     T, S = size(model.ξs)
     if isa(l1_regularization, Vector)
-        m_dual = [dual_bellman_operator(lbm, t, l1_regularization[t]) for t in 1:T]
+        m_dual = [dual_bellman_operator(model, t, l1_regularization[t]) for t in 1:T]
     else
-        m_dual = [dual_bellman_operator(lbm, t, l1_regularization) for t in 1:T]
+        m_dual = [dual_bellman_operator(model, t, l1_regularization) for t in 1:T]
     end
     m_primal = [bellman_operator(model, t) for t in 1:T]
 
@@ -249,10 +256,10 @@ function primaldualsddp!(
         μscenarios = backward_pass!(model, m_primal, V, xscenarios)
         dual_backward_pass!(model, m_dual, D, μscenarios)
         l1_reg = isa(l1_regularization, Vector) ? l1_regularization[1] : l1_regularization
-        μ₀ = init(D[1], pruner, l1_reg)
+        μ₀ = initial_position(D[1], seed, pruner.optimizer_constructor, l1_reg)
         dual_cupps_pass(model, m_dual, ξscenarios, D, μ₀)
 
-        if mod(i, nprune) == 0
+        if mod(i, nprune) == 0 && !isnothing(pruner)
             println("\n Performing pruning number $(div(i, nprune))")
             for (t, Dₜ₊₁) in enumerate(D[2:end])
                 prune!(D[t+1], pruner)
@@ -260,9 +267,7 @@ function primaldualsddp!(
                 m_dual[t] = dual_bellman_operator(model, t, l1_reg)
                 initialize_lift_dual!(m_dual[t], model, t, D[t+1])
             end
-            V[1] = unique(V[1])
             for (t, Vₜ₊₁) in enumerate(V[2:end])
-                V[t+1] = unique(Vₜ₊₁)
                 prune!(V[t+1], pruner)
                 m[t] = bellman_operator(hdm, t)
                 initialize_lift_primal!(m[t], hdm, t, V[t+1])
@@ -276,6 +281,9 @@ function primaldualsddp!(
             println("Iter $i  lb ", lb, "  ub ", ub)
         end
     end
-    prune!(D[1], pruner)
+    if !isnothing(pruner)
+        prune!(V[1], pruner)
+        prune!(D[1], pruner)
+    end
     return m_primal, m_dual
 end
