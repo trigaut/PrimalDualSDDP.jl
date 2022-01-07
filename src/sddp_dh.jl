@@ -91,6 +91,7 @@ function primalsddp!(
     nprune::Int = n_pass,
     pruner = nothing,
     verbose::Int = n_pass,
+    showprogress::Bool = true,
 )
     n_pruning = div(n_pass, nprune)
     println("** Primal SDDP with $(n_pass) passes, $(n_pruning) pruning  **")
@@ -107,7 +108,8 @@ function primalsddp!(
     println("Primal Bellman JuMP Models initialized")
     println("Now running SDDP passes")
 
-    @showprogress for i in 1:n_pass
+    p = Progress(n_pass)
+    for i in 1:n_pass
         ξscenarios = dhm.ξs[:, rand(1:S, 1), :]
         x₀ = [rand(x₀s)...]
         xscenarios = forward_pass(dhm, m, ξscenarios, x₀)
@@ -124,6 +126,10 @@ function primalsddp!(
         if mod(i, verbose) == 0
             lb = V[1](x₀)
             println("Iter $i    lb ", lb)
+        end
+
+        if showprogress
+            next!(p)
         end
     end
     if !isnothing(pruner)

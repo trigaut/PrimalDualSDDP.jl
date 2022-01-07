@@ -25,15 +25,16 @@ function new_cut!(hdm::HazardDecisionModel, Vₜ::PolyhedralFunction, m::JuMP.Mo
     γ = 0.0
     for (i, πᵢ) in enumerate(πₜ₊₁)
         primalsolve!(hdm, m, xₜ, ξₜ₊₁[i, :])
-        λ .= λ .+ πᵢ .* dual.(FixRef.(m[:xₜ]))
-        γ += πᵢ .* (objective_value(m) - λ' * xₜ)
+        λᵢ = dual.(FixRef.(m[:xₜ]))
+        λ .= λ .+ πᵢ .* λᵢ
+        γ += πᵢ .* (objective_value(m) - λᵢ' * xₜ)
     end
     Vₜ.λ = cat(Vₜ.λ, λ', dims = 1)
     push!(Vₜ.γ, γ)
     return λ
 end
 
-function update!(hdm::HazardDecisionModel, mₜ::JuMP.Model, Vₜ₊₁::PolyhedralFunction)
+function update!(::HazardDecisionModel, mₜ::JuMP.Model, Vₜ₊₁::PolyhedralFunction)
     @constraint(mₜ, mₜ[:θ] >= Vₜ₊₁.λ[end, :]' * mₜ[:xₜ₊₁] + Vₜ₊₁.γ[end])
     return
 end
@@ -95,6 +96,7 @@ function primalsddp!(
     nprune::Int = n_pass,
     pruner = nothing,
     verbose::Int = n_pass,
+    showprogress::Bool = true,
 )
     is_pruning_activated = nprune > 0
     if is_pruning_activated && isnothing(pruner)
@@ -112,7 +114,9 @@ function primalsddp!(
     println("Primal Bellman JuMP Models initialized")
     println("Now running SDDP passes")
 
-    @showprogress for i in 1:n_pass
+    p = Progress(n_pass)
+
+    for i in 1:n_pass
         ξscenarios = hdm.ξs[:, rand(1:S, 1), :]
         x₀ = [rand(x₀s)...]
         xscenarios = forward_pass(hdm, m, ξscenarios, x₀)
@@ -129,6 +133,9 @@ function primalsddp!(
         if mod(i, verbose) == 0
             lb = V[1](x₀)
             println("Iter $i    lb ", lb)
+        end
+        if showprogress
+            next!(p)
         end
     end
     if !isnothing(pruner)

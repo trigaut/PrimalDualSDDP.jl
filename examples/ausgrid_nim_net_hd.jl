@@ -2,7 +2,7 @@ include(joinpath(@__DIR__, "models", "nim_net_hd.jl"))
 
 using JLD, GRUtils
 
-#const train_data = EnergyDataset.load_customer_train_data(80);
+# const train_data = EnergyDataset.load_customer_train_data(80);
 begin
     const full_train_data = load(joinpath(@__DIR__, "ausgrid_train_80.jld"))["data"]
     days = 150:180
@@ -35,8 +35,6 @@ end
 
 const primal_pruner = PrimalDualSDDP.ExactPruner(SOLVER, lb = [0.0, 0.0], ub = [capacity, Δhmax])
 
-const nim = NonIslandedNetHDModel(Δt, capacity, ρc, ρd, pbmax, pbmin, pemax, Δhmax, cbuy, csell, train_data, 10)
-
 const primal_pruner = PrimalDualSDDP.ExactPruner(SOLVER, lb = [0.0, 0.0], ub = [capacity, Δhmax])
 
 const V = [PrimalDualSDDP.PolyhedralFunction([0.0 0.0], [-100.0]) for t in 1:T]
@@ -45,7 +43,7 @@ push!(V, PrimalDualSDDP.PolyhedralFunction([-offpeak 0.0], [0.0]))
 x₀s = collect(Base.product([0.0, 10.0], [5.0, 10.0, 20.0]))
 const m = PrimalDualSDDP.primalsddp!(nim, V, 50, x₀s, nprune = 10, pruner = primal_pruner)
 
-#const l1_regularization = maximum(PrimalDualSDDP.lipschitz_constant.(V))
+# const l1_regularization = maximum(PrimalDualSDDP.lipschitz_constant.(V))
 const l1_regularization = 162
 
 const dual_pruner = PrimalDualSDDP.ExactPruner(SOLVER, lb = -l1_regularization, ub = l1_regularization)
