@@ -13,19 +13,19 @@ dim(V::PolyhedralFunction) = size(V.λ, 2)
 eachcut(V::PolyhedralFunction) = zip(eachrow(V.λ), V.γ)
 
 function PolyhedralFunction()
-    return PolyhedralFunction(Array{Float64,2}(undef, 0,0), Vector{Float64}())
+    return PolyhedralFunction(Array{Float64,2}(undef, 0, 0), Vector{Float64}())
 end
 
 function lipschitz_constant(V::PolyhedralFunction, pnorm::Real = 1)
-    return maximum([norm(λ,pnorm) for λ in eachrow(V.λ)])
+    return maximum([norm(λ, pnorm) for λ in eachrow(V.λ)])
 end
 
 function PolyhedralFenchelTransform(V::PolyhedralFunction)
-    PolyhedralFenchelTransform(V, 0.)
+    return PolyhedralFenchelTransform(V, 0.0)
 end
 
 function (V::PolyhedralFunction)(x::Array{Float64,1})
-    return maximum(V.λ*x .+ V.γ)
+    return maximum(V.λ * x .+ V.γ)
 end
 
 function (D::PolyhedralFenchelTransform)(x::Array{Float64,1}, optimizer_constructor)
@@ -36,8 +36,8 @@ function (D::PolyhedralFenchelTransform)(x::Array{Float64,1}, optimizer_construc
 end
 
 function Base.unique(V::PolyhedralFunction)
-    Vu = unique(cat(V.λ, V.γ, dims=2), dims=1)
-    return PolyhedralFunction(Vu[:,1:end-1], Vu[:,end])
+    Vu = unique(cat(V.λ, V.γ, dims = 2), dims = 1)
+    return PolyhedralFunction(Vu[:, 1:end-1], Vu[:, end])
 end
 
 function add_cut!(V, λ, γ)
@@ -52,43 +52,36 @@ function add_cut!(V, λ, γ)
 end
 
 function remove_cut!(V::PolyhedralFunction, cut_index::Int)
-    V.λ = V.λ[(1:cut_index-1)∪(cut_index+1:end),:]
+    V.λ = V.λ[(1:cut_index-1)∪(cut_index+1:end), :]
     V.γ = V.γ[(1:cut_index-1)∪(cut_index+1:end)]
     return
 end
 
 function remove_cut(V::PolyhedralFunction, cut_index::Int)
-    return PolyhedralFunction(V.λ[(1:cut_index-1)∪(cut_index+1:end),:],
-                              V.γ[(1:cut_index-1)∪(cut_index+1:end)])
+    return PolyhedralFunction(V.λ[(1:cut_index-1)∪(cut_index+1:end), :], V.γ[(1:cut_index-1)∪(cut_index+1:end)])
 end
 
 function δ(point::Vector{Float64}, reg::Float64)
     nx = length(point)
     V = PolyhedralFunction()
-    for (i,p) in enumerate(point)
-        add_cut!(V, [(i==j)*reg for j in 1:nx], p)
-        add_cut!(V, [-(i==j)*reg for j in 1:nx], p)
+    for (i, p) in enumerate(point)
+        add_cut!(V, [(i == j) * reg for j in 1:nx], p)
+        add_cut!(V, [-(i == j) * reg for j in 1:nx], p)
     end
     return V
 end
 
-function fenchel_transform_as_sup(m::JuMP.Model,
-                                  D::PolyhedralFunction,
-                                  x::Array{Float64, 1},
-                                  lip::Real)
+function fenchel_transform_as_sup(m::JuMP.Model, D::PolyhedralFunction, x::Array{Float64,1}, lip::Real)
     nx = size(D.λ, 2)
     @variable(m, -lip <= λ[1:nx] <= lip)
     @variable(m, θ)
     for (xk, βk) in eachcut(D)
-        @constraint(m, θ >= xk'*λ + βk)
+        @constraint(m, θ >= xk' * λ + βk)
     end
-    @objective(m, Max, x'*λ - θ)
+    @objective(m, Max, x' * λ - θ)
 end
 
-function fenchel_transform_as_inf(m::JuMP.Model,
-                                  D::PolyhedralFunction,
-                                  x::Array{Float64, 1},
-                                  lip::Real)
+function fenchel_transform_as_inf(m::JuMP.Model, D::PolyhedralFunction, x::Array{Float64,1}, lip::Real)
     nc, nx = size(D.λ)
     @variable(m, σ[1:nc] >= 0)
     @constraint(m, sum(σ) == 1)
@@ -96,6 +89,6 @@ function fenchel_transform_as_inf(m::JuMP.Model,
     @variable(m, lift[1:nx] >= 0)
     @constraint(m, lift .>= x .- y)
     @constraint(m, lift .>= y .- x)
-    @constraint(m, sum(σk .* D.λ[k,:] for (k,σk) in enumerate(σ)) .== y)
-    @objective(m, Min, lip*sum(lift) - sum(σ.*D.γ))
+    @constraint(m, sum(σk .* D.λ[k, :] for (k, σk) in enumerate(σ)) .== y)
+    @objective(m, Min, lip * sum(lift) - sum(σ .* D.γ))
 end

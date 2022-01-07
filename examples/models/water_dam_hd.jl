@@ -13,25 +13,27 @@ mutable struct WaterDamModel <: HazardDecisionModel
     capacity::Float64
     umax::Float64
     csell::Vector{Float64}
-    ξ
-    πξ
-    ξs
-    fₜ
+    ξ::Any
+    πξ::Any
+    ξs::Any
+    fₜ::Any
 end
 
-function WaterDamModel(Δt::Float64, capacity::Float64,
-                       umax::Float64, csell::Vector{Float64},
-                       rainfall_scenarios::Array{Float64,2},
-                       bins::Int)
-
+function WaterDamModel(
+    Δt::Float64,
+    capacity::Float64,
+    umax::Float64,
+    csell::Vector{Float64},
+    rainfall_scenarios::Array{Float64,2},
+    bins::Int,
+)
     ξ, πξ = PrimalDualSDDP.discrete_white_noise(rainfall_scenarios, bins)
 
     function fₜ(t, xₜ, uₜ₊₁, ξₜ₊₁)
         return [xₜ[1] - uₜ₊₁[1] + ξₜ₊₁[1] - uₜ₊₁[2]]
     end
 
-    return WaterDamModel(Δt, capacity, umax, csell,
-                         ξ, πξ, rainfall_scenarios[:,:,:], fₜ)
+    return WaterDamModel(Δt, capacity, umax, csell, ξ, πξ, rainfall_scenarios[:, :, :], fₜ)
 end
 
 function PrimalDualSDDP.bellman_operator(wdm::WaterDamModel, t::Int)
@@ -43,7 +45,7 @@ function PrimalDualSDDP.bellman_operator(wdm::WaterDamModel, t::Int)
     @variable(m, 0 <= u <= wdm.umax)
     @variable(m, s >= 0)
     @constraint(m, l2 == l1 - u .+ r2 - s)
-    @objective(m, Min, -wdm.csell[t]*u)
+    @objective(m, Min, -wdm.csell[t] * u)
 
     @expression(m, xₜ, [l1])
     @expression(m, uₜ₊₁, [u, s])
@@ -53,21 +55,20 @@ function PrimalDualSDDP.bellman_operator(wdm::WaterDamModel, t::Int)
     return m
 end
 
-function PrimalDualSDDP.dual_bellman_operator(wdm::WaterDamModel, t::Int,
-                                              l1_regularization::Real)
+function PrimalDualSDDP.dual_bellman_operator(wdm::WaterDamModel, t::Int, l1_regularization::Real)
     m = Model()
-    nξ = size(wdm.ξ[t],1)
+    nξ = size(wdm.ξ[t], 1)
 
     @variable(m, 0 <= lₜ <= wdm.capacity)
     @variable(m, 0 <= lₜ₊₁[1:nξ] <= wdm.capacity)
 
     @variable(m, 0 <= u[1:nξ] <= wdm.umax)
     @variable(m, s[1:nξ] >= 0)
-    @constraint(m, lₜ₊₁ .== wdm.ξ[t][:,1] .- u .+ lₜ .- s)
-    @objective(m, Min, -wdm.csell[t] * wdm.πξ[t]'*u)
+    @constraint(m, lₜ₊₁ .== wdm.ξ[t][:, 1] .- u .+ lₜ .- s)
+    @objective(m, Min, -wdm.csell[t] * wdm.πξ[t]' * u)
 
     @expression(m, xₜ, [lₜ])
-    @expression(m, xₜ₊₁[i=1:nξ], [lₜ₊₁[i]])
+    @expression(m, xₜ₊₁[i = 1:nξ], [lₜ₊₁[i]])
 
     md = PrimalDualSDDP.auto_dual_bellman_operator(m, wdm.πξ[t], l1_regularization)
     set_optimizer(md, SOLVER)

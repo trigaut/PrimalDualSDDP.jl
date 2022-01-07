@@ -16,99 +16,88 @@ function sample(s::FixedInitSampler)
     end
 end
 
-function initialize_lift_dual!(m::JuMP.Model,
-                               lbm::LinearBellmanModel,
-                               t::Int,
-                               Dₜ₊₁::PolyhedralFunction)
+function initialize_lift_dual!(m::JuMP.Model, lbm::LinearBellmanModel, t::Int, Dₜ₊₁::PolyhedralFunction)
     nξ = length(m[:μₜ₊₁])
     @variable(m, θ[1:nξ])
     for (λ, γ) in eachcut(Dₜ₊₁)
         for i in 1:nξ
-            @constraint(m, θ[i] >= λ'*m[:μₜ₊₁][i] + γ)
+            @constraint(m, θ[i] >= λ' * m[:μₜ₊₁][i] + γ)
         end
     end
     obj_expr = objective_function(m)
-    @objective(m, Min, obj_expr + sum(lbm.πξ[t][i]*θ[i] for i in 1:nξ))
+    @objective(m, Min, obj_expr + sum(lbm.πξ[t][i] * θ[i] for i in 1:nξ))
     return
 end
 
-function dualsolve!(::LinearBellmanModel,
-                    m::JuMP.Model,
-                    μₜ::Vector{Float64})
-    fix.(m[:μₜ], μₜ, force=true)
+function dualsolve!(::LinearBellmanModel, m::JuMP.Model, μₜ::Vector{Float64})
+    fix.(m[:μₜ], μₜ, force = true)
     optimize!(m)
     @assert termination_status(m) == MOI.OPTIMAL println(m)
     return
 end
 
-function dual_new_cut!(lbm::LinearBellmanModel,
-                       Dₜ::PolyhedralFunction,
-                       m::JuMP.Model,
-                       μₜ::Vector{Float64})
+function dual_new_cut!(lbm::LinearBellmanModel, Dₜ::PolyhedralFunction, m::JuMP.Model, μₜ::Vector{Float64})
     dualsolve!(lbm, m, μₜ)
     λ = dual.(FixRef.(m[:μₜ]))
-    γ = objective_value(m) - λ'*μₜ
+    γ = objective_value(m) - λ' * μₜ
     Dₜ.λ = cat(Dₜ.λ, λ', dims = 1)
     push!(Dₜ.γ, γ)
     return
 end
 
-function dualupdate!(lbm::LinearBellmanModel,
-                     mₜ::JuMP.Model,
-                     Dₜ₊₁::PolyhedralFunction)
+function dualupdate!(lbm::LinearBellmanModel, mₜ::JuMP.Model, Dₜ₊₁::PolyhedralFunction)
     nξ = length(mₜ[:θ])
     for i in 1:nξ
-        @constraint(mₜ, mₜ[:θ][i] >= Dₜ₊₁.λ[end,:]'*mₜ[:μₜ₊₁][i] + Dₜ₊₁.γ[end])
+        @constraint(mₜ, mₜ[:θ][i] >= Dₜ₊₁.λ[end, :]' * mₜ[:μₜ₊₁][i] + Dₜ₊₁.γ[end])
     end
     return
 end
 
-function dualstate!(lbm::LinearBellmanModel,
-                    m::JuMP.Model,
-                    μₜ::Vector{Float64})
+function dualstate!(lbm::LinearBellmanModel, m::JuMP.Model, μₜ::Vector{Float64})
     dualsolve!(lbm, m, μₜ)
     return map(μ♯ -> value.(μ♯), m[:μₜ₊₁])
 end
 
-function dualstatecuts!(lbm::LinearBellmanModel,
-                    Dₜ::PolyhedralFunction,
-                    m::JuMP.Model,
-                    μₜ::Vector{Float64})
+function dualstatecuts!(lbm::LinearBellmanModel, Dₜ::PolyhedralFunction, m::JuMP.Model, μₜ::Vector{Float64})
     dualsolve!(lbm, m, μₜ)
     λ = dual.(FixRef.(m[:μₜ]))
-    γ = objective_value(m) - λ'*μₜ
+    γ = objective_value(m) - λ' * μₜ
     Dₜ.λ = cat(Dₜ.λ, λ', dims = 1)
     push!(Dₜ.γ, γ)
     return map(μ♯ -> value.(μ♯), m[:μₜ₊₁])
 end
 
-function dual_forward_pass(lbm::LinearBellmanModel,
-                           m::Vector{JuMP.Model},
-                           ξscenarios::Array{Float64, 3},
-                           μ₀::Vector{Float64})
-    T = size(ξscenarios,1)
-    n_pass = size(ξscenarios,2)
-    μscenarios = fill(0., T+1, n_pass, length(μ₀))
+function dual_forward_pass(
+    lbm::LinearBellmanModel,
+    m::Vector{JuMP.Model},
+    ξscenarios::Array{Float64,3},
+    μ₀::Vector{Float64},
+)
+    T = size(ξscenarios, 1)
+    n_pass = size(ξscenarios, 2)
+    μscenarios = fill(0.0, T + 1, n_pass, length(μ₀))
     @inbounds for pass in 1:n_pass
         μₜ = μ₀
         μscenarios[1, pass, :] .= μ₀
         for (t, ξₜ₊₁) in enumerate(eachrow(ξscenarios[:, pass, :]))
             μₜ₊₁ = dualstate!(lbm, m[t], μₜ)
-            μscenarios[t+1, pass,:] .= rand(μₜ₊₁)
+            μscenarios[t+1, pass, :] .= rand(μₜ₊₁)
             μₜ = μscenarios[t+1, pass, :]
         end
     end
     return μscenarios
 end
 
-function dual_cupps_pass(lbm::LinearBellmanModel,
-                         m::Vector{JuMP.Model},
-                         ξscenarios::Array{Float64, 3},
-                         D::Vector{PolyhedralFunction},
-                         μ₀::Vector{Float64})
-    T = size(ξscenarios,1)
-    n_pass = size(ξscenarios,2)
-    μscenarios = fill(0., T+1, n_pass, length(μ₀))
+function dual_cupps_pass(
+    lbm::LinearBellmanModel,
+    m::Vector{JuMP.Model},
+    ξscenarios::Array{Float64,3},
+    D::Vector{PolyhedralFunction},
+    μ₀::Vector{Float64},
+)
+    T = size(ξscenarios, 1)
+    n_pass = size(ξscenarios, 2)
+    μscenarios = fill(0.0, T + 1, n_pass, length(μ₀))
     @inbounds for pass in 1:n_pass
         μₜ = μ₀
         μscenarios[1, pass, :] .= μ₀
@@ -117,26 +106,28 @@ function dual_cupps_pass(lbm::LinearBellmanModel,
             if t > 1
                 dualupdate!(lbm, m[t-1], D[t])
             end
-            μscenarios[t+1, pass,:] .= rand(μₜ₊₁)
+            μscenarios[t+1, pass, :] .= rand(μₜ₊₁)
             μₜ = μscenarios[t+1, pass, :]
         end
     end
     return μscenarios
 end
 
-function dual_backward_pass!(lbm::LinearBellmanModel,
-                             m::Vector{JuMP.Model},
-                             D::Vector{PolyhedralFunction},
-                             μscenarios::Array{Float64,3})
+function dual_backward_pass!(
+    lbm::LinearBellmanModel,
+    m::Vector{JuMP.Model},
+    D::Vector{PolyhedralFunction},
+    μscenarios::Array{Float64,3},
+)
     T = length(m)
     n_pass = size(μscenarios, 2)
     for pass in 1:n_pass
-        dual_new_cut!(lbm, D[T], m[T], μscenarios[T,pass,:])
+        dual_new_cut!(lbm, D[T], m[T], μscenarios[T, pass, :])
     end
     @inbounds for t in T-1:-1:1
         dualupdate!(lbm, m[t], D[t+1])
         for pass in 1:n_pass
-            dual_new_cut!(lbm, D[t], m[t], μscenarios[t,pass,:])
+            dual_new_cut!(lbm, D[t], m[t], μscenarios[t, pass, :])
         end
     end
     return
@@ -154,15 +145,17 @@ function initial_position(D, seed, optimizer_constructor, l1_regularization)
     return JuMP.value.(model[:λ])
 end
 
-function dualsddp!(lbm::LinearBellmanModel,
-                   D::Array{PolyhedralFunction},
-                   n_pass::Int,
-                   seed::AbstractInitialSampler;
-                   nprune::Int = n_pass,
-                   pruner=nothing,
-                   prunetol::Real = 0.,
-                   verbose::Int=n_pass+1,
-                   l1_regularization= 1e6)
+function dualsddp!(
+    lbm::LinearBellmanModel,
+    D::Array{PolyhedralFunction},
+    n_pass::Int,
+    seed::AbstractInitialSampler;
+    nprune::Int = n_pass,
+    pruner = nothing,
+    prunetol::Real = 0.0,
+    verbose::Int = n_pass + 1,
+    l1_regularization = 1e6,
+)
     n_pruning = div(n_pass, nprune)
 
     println("** Dual SDDP with $(n_pass) passes, $(n_pruning) pruning  **")
@@ -185,7 +178,7 @@ function dualsddp!(lbm::LinearBellmanModel,
     println("Now running SDDP passes")
 
     for i in 1:n_pass
-        ξscenarios = lbm.ξs[:, rand(1:S,1), :]
+        ξscenarios = lbm.ξs[:, rand(1:S, 1), :]
         l1_reg = isa(l1_regularization, Vector) ? l1_regularization[1] : l1_regularization
         μ₀ = initial_position(D[1], seed, pruner.optimizer_constructor, l1_reg)
         μscenarios = dual_forward_pass(lbm, m, ξscenarios, μ₀)
@@ -214,16 +207,17 @@ function dualsddp!(lbm::LinearBellmanModel,
     return m
 end
 
-function primaldualsddp!(model::LinearBellmanModel,
-                         V::Array{PolyhedralFunction},
-                         D::Array{PolyhedralFunction},
-                         n_pass::Int,
-                         seed::AbstractInitialSampler;
-                         nprune::Int = n_pass,
-                         pruner=nothing,
-                         verbose::Int=n_pass+1,
-                         l1_regularization::Real = 1e6)
-
+function primaldualsddp!(
+    model::LinearBellmanModel,
+    V::Array{PolyhedralFunction},
+    D::Array{PolyhedralFunction},
+    n_pass::Int,
+    seed::AbstractInitialSampler;
+    nprune::Int = n_pass,
+    pruner = nothing,
+    verbose::Int = n_pass + 1,
+    l1_regularization::Real = 1e6,
+)
     n_pruning = div(n_pass, nprune)
     println("** Dual SDDP with $(n_pass) passes, $(n_pruning) pruning  **")
     if n_pruning > 0 && isnothing(pruner)
@@ -249,7 +243,7 @@ function primaldualsddp!(model::LinearBellmanModel,
     println("Now running SDDP passes")
 
     for i in 1:n_pass
-        ξscenarios = model.ξs[:,rand(1:S,1),:]
+        ξscenarios = model.ξs[:, rand(1:S, 1), :]
 
         x₀ = sample(seed)
         xscenarios = forward_pass(model, m_primal, ξscenarios, x₀)

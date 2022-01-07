@@ -1,70 +1,57 @@
 abstract type HazardDecisionModel <: LinearBellmanModel end
 
-function initialize_lift_primal!(m::JuMP.Model,
-                                 hdm::HazardDecisionModel,
-                                 t::Int,
-                                 Vₜ₊₁::PolyhedralFunction)
+function initialize_lift_primal!(m::JuMP.Model, hdm::HazardDecisionModel, t::Int, Vₜ₊₁::PolyhedralFunction)
     @variable(m, θ)
     for (λ, γ) in eachcut(Vₜ₊₁)
-        @constraint(m, θ >= λ'*m[:xₜ₊₁] + γ)
+        @constraint(m, θ >= λ' * m[:xₜ₊₁] + γ)
     end
     obj_expr = objective_function(m)
     @objective(m, Min, obj_expr + θ)
     return
 end
 
-function primalsolve!(::HazardDecisionModel,
-                       m::JuMP.Model,
-                       xₜ::Vector{Float64},
-                       ξₜ₊₁::Vector{Float64})
-    fix.(m[:xₜ], xₜ, force=true)
-    fix.(m[:ξₜ₊₁], ξₜ₊₁, force=true)
+function primalsolve!(::HazardDecisionModel, m::JuMP.Model, xₜ::Vector{Float64}, ξₜ₊₁::Vector{Float64})
+    fix.(m[:xₜ], xₜ, force = true)
+    fix.(m[:ξₜ₊₁], ξₜ₊₁, force = true)
     optimize!(m)
     @assert termination_status(m) == MOI.OPTIMAL println(m)
     return
 end
 
-function new_cut!(hdm::HazardDecisionModel,
-                  Vₜ::PolyhedralFunction,
-                  m::JuMP.Model,
-                  t::Int,
-                  xₜ::Vector{Float64})
+function new_cut!(hdm::HazardDecisionModel, Vₜ::PolyhedralFunction, m::JuMP.Model, t::Int, xₜ::Vector{Float64})
     ξₜ₊₁ = hdm.ξ[t]
     πₜ₊₁ = hdm.πξ[t]
     λ = zeros(length(xₜ))
-    γ = 0.
+    γ = 0.0
     for (i, πᵢ) in enumerate(πₜ₊₁)
-        primalsolve!(hdm, m, xₜ, ξₜ₊₁[i,:])
-        λ .= λ .+ πᵢ.*dual.(FixRef.(m[:xₜ]))
-        γ += πᵢ.*(objective_value(m) - λ'*xₜ)
+        primalsolve!(hdm, m, xₜ, ξₜ₊₁[i, :])
+        λ .= λ .+ πᵢ .* dual.(FixRef.(m[:xₜ]))
+        γ += πᵢ .* (objective_value(m) - λ' * xₜ)
     end
     Vₜ.λ = cat(Vₜ.λ, λ', dims = 1)
     push!(Vₜ.γ, γ)
     return λ
 end
 
-function update!(hdm::HazardDecisionModel,
-                 mₜ::JuMP.Model,
-                 Vₜ₊₁::PolyhedralFunction)
-    @constraint(mₜ, mₜ[:θ] >= Vₜ₊₁.λ[end,:]'*mₜ[:xₜ₊₁] + Vₜ₊₁.γ[end])
+function update!(hdm::HazardDecisionModel, mₜ::JuMP.Model, Vₜ₊₁::PolyhedralFunction)
+    @constraint(mₜ, mₜ[:θ] >= Vₜ₊₁.λ[end, :]' * mₜ[:xₜ₊₁] + Vₜ₊₁.γ[end])
     return
 end
 
-function control!(hdm::HazardDecisionModel,
-                  m::JuMP.Model,
-                  xₜ::Vector{Float64},
-                  ξₜ₊₁::Vector{Float64})
+function control!(hdm::HazardDecisionModel, m::JuMP.Model, xₜ::Vector{Float64}, ξₜ₊₁::Vector{Float64})
     primalsolve!(hdm, m, xₜ, ξₜ₊₁)
     return value.(m[:uₜ₊₁])
 end
 
-function forward_pass(hdm::HazardDecisionModel,
-                      m::Vector{JuMP.Model},
-                      ξscenarios::Array{Float64, 3},
-                      x₀::Vector{Float64})
-    T = size(ξscenarios,1)
-    n_pass = size(ξscenarios,2)
-    xscenarios = fill(0., T+1, n_pass, length(x₀))
+function forward_pass(
+    hdm::HazardDecisionModel,
+    m::Vector{JuMP.Model},
+    ξscenarios::Array{Float64,3},
+    x₀::Vector{Float64},
+)
+    T = size(ξscenarios, 1)
+    n_pass = size(ξscenarios, 2)
+    xscenarios = fill(0.0, T + 1, n_pass, length(x₀))
     @inbounds for pass in 1:n_pass
         xₜ = x₀
         xscenarios[1, pass, :] .= x₀
@@ -77,39 +64,44 @@ function forward_pass(hdm::HazardDecisionModel,
     return xscenarios
 end
 
-function backward_pass!(hdm::HazardDecisionModel,
-                        m::Vector{JuMP.Model},
-                        V::Vector{PolyhedralFunction},
-                        xscenarios::Array{Float64,3})
+function backward_pass!(
+    hdm::HazardDecisionModel,
+    m::Vector{JuMP.Model},
+    V::Vector{PolyhedralFunction},
+    xscenarios::Array{Float64,3},
+)
     T = length(m)
     n_pass = size(xscenarios, 2)
     costates = zeros(size(xscenarios))
     for pass in 1:n_pass
-        λ = new_cut!(hdm, V[T], m[T], T, xscenarios[T, pass,:])
+        λ = new_cut!(hdm, V[T], m[T], T, xscenarios[T, pass, :])
         costates[T, pass, :] .= λ
     end
     @inbounds for t in T-1:-1:1
         update!(hdm, m[t], V[t+1])
         for pass in 1:n_pass
-            λ = new_cut!(hdm, V[t], m[t], t, xscenarios[t, pass,:])
+            λ = new_cut!(hdm, V[t], m[t], t, xscenarios[t, pass, :])
             costates[t, pass, :] .= λ
         end
     end
     return costates
 end
 
-function primalsddp!(hdm::HazardDecisionModel,
-                     V::Array{PolyhedralFunction},
-                     n_pass::Int,
-                     x₀s::Array;
-                     nprune::Int = n_pass,
-                     pruner=nothing,
-                     verbose::Int=n_pass)
-    n_pruning = div(n_pass, nprune)
-    println("** Primal SDDP, in Hazard Decision , with $(n_pass) passes and $(n_pruning) pruning  **")
-    if n_pruning > 0 && isnothing(pruner)
+function primalsddp!(
+    hdm::HazardDecisionModel,
+    V::Array{PolyhedralFunction},
+    n_pass::Int,
+    x₀s::Array;
+    nprune::Int = n_pass,
+    pruner = nothing,
+    verbose::Int = n_pass,
+)
+    is_pruning_activated = nprune > 0
+    if is_pruning_activated && isnothing(pruner)
         error("Could not proceed to pruning as `pruner` is not set.")
     end
+    n_pruning = is_pruning_activated ? div(n_pass, nprune) : 0
+    println("** Primal SDDP, in Hazard Decision , with $(n_pass) passes and $(n_pruning) pruning  **")
 
     T, S = size(hdm.ξs)
     m = [bellman_operator(hdm, t) for t in 1:T]
@@ -121,12 +113,12 @@ function primalsddp!(hdm::HazardDecisionModel,
     println("Now running SDDP passes")
 
     @showprogress for i in 1:n_pass
-        ξscenarios = hdm.ξs[:, rand(1:S,1), :]
+        ξscenarios = hdm.ξs[:, rand(1:S, 1), :]
         x₀ = [rand(x₀s)...]
         xscenarios = forward_pass(hdm, m, ξscenarios, x₀)
         backward_pass!(hdm, m, V, xscenarios)
 
-        if mod(i, nprune) == 0  && !isnothing(pruner)
+        if is_pruning_activated && mod(i, nprune) == 0
             println("\n Performing pruning number $(div(i, nprune))")
             for (t, Vₜ₊₁) in enumerate(V[2:end])
                 prune!(V[t+1], pruner)

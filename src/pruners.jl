@@ -4,13 +4,13 @@ abstract type AbstractPruner end
 function prune!(V::PolyhedralFunction, pruner) end
 
 struct ExactPruner <: AbstractPruner
-    optimizer_constructor
-    lb
-    ub
+    optimizer_constructor::Any
+    lb::Any
+    ub::Any
 end
 
 function ExactPruner(optimizer_constructor; lb = -Inf, ub = Inf)
-    ExactPruner(optimizer_constructor, lb, ub)
+    return ExactPruner(optimizer_constructor, lb, ub)
 end
 
 function prune!(V::PolyhedralFunction, pruner::ExactPruner)
@@ -27,13 +27,13 @@ function prune!(V::PolyhedralFunction, pruner::ExactPruner)
         end
         @variable(lp, y)
         @objective(lp, Max, dot(λ, x) - y)
-        for (C,γc) in eachcut(V)
+        for (C, γc) in eachcut(V)
             if C != λ
                 @constraint(lp, dot(C, x) + γc <= y)
             end
         end
         optimize!(lp)
-        if termination_status(lp) == MOI.OPTIMAL && objective_value(lp) + γ <= 0.
+        if termination_status(lp) == MOI.OPTIMAL && objective_value(lp) + γ <= 0.0
             remove_cut!(V, ind)
         end
     end
@@ -41,5 +41,5 @@ function prune!(V::PolyhedralFunction, pruner::ExactPruner)
 end
 
 struct CutShooter <: AbstractPruner
-    shooter_position
+    shooter_position::Any
 end
